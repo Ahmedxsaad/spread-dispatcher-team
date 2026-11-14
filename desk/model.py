@@ -40,12 +40,16 @@ def expand(x: list[float]) -> list[float]:
     return (x + [x[a] * x[b] for i, a in enumerate(CONTINUOUS) for b in CONTINUOUS[i + 1:]] + [x[a] ** 2 for a in CONTINUOUS])
 
 
-def logistic(curve: dict, x: list[float]) -> float:
+def logistic(curve: dict, x: list[float], towns: tuple = ()) -> float:
+    """The curve's chance for the features `x`. With `towns`, the pickup and the delivery place, it adds what
+    the curve knows about each town beyond the features: some towns find drivers more easily than their count of drivers says."""
     if curve.get("products"):
         x = expand(x)
     if "mean" in curve:  # the curve was fitted on standardised features
         x = [(v - m) / s for v, m, s in zip(x, curve["mean"], curve["scale"])]
     z = curve["intercept"] + sum(c * v for c, v in zip(curve["coef"], x))
+    if towns:
+        z += curve["towns"]["shift"] + curve["towns"]["pickup"].get(towns[0], 0.0) + curve["towns"]["delivery"].get(towns[1], 0.0)
     return 1 / (1 + math.exp(-max(-30.0, min(30.0, z))))
 
 

@@ -20,8 +20,11 @@ Level 8, mean margin a week on the same 20 practice weeks (`eval-01` to `eval-20
 | `v13` | Fee raises before the last hours | €16,467 | 97.7% | 93.0% |
 | `v15` | Riskier cars while the week has on-time share to spare | €17,384 | 97.2% | 92.8% |
 | `v16` | Trade-ins | €17,363 | 97.1% | 93.1% |
+| `v17` | A market learner that follows the competitor's own moves | €17,408 | 96.8% | 93.6% |
 
-On weeks that no setting was tuned on, `v16` makes €17,172 a week at 97.1% on time (20 weeks, `hold-01` to `hold-20`, lowest week 94.1%). All 40 weeks are ranked.
+On weeks that no setting was tuned on, `v17` makes €17,253 a week at 97.0% on time (20 weeks, `hold-01` to `hold-20`, lowest week 93.8%).
+
+A gain of a few hundred euros a week does not show on 40 weeks: there the standard error of a difference is €150 to €200. So 80 more weeks (`more-01` to `more-80`) judge the last steps. On all 120 weeks `v17` makes €17,023 a week at 96.9% on time, and `v16` €16,709 at 96.7%: €314 more (standard error €105), better on 78 of the 120 weeks. All 120 weeks are ranked, and the lowest is 91.5% on time.
 
 Ranking rounds at level 8, five secret weeks each:
 
@@ -30,7 +33,7 @@ Ranking rounds at level 8, five secret weeks each:
 | Saturday 00:00 | `v11` | €74,742 | 97.6% |
 | Saturday 09:00 | `v16` | €77,573 | 97.2% |
 
-In the Saturday 09:00 round this was the highest total of the 31 teams that had finished when we played, at 09:40.
+In the Saturday 09:00 round this was the second highest total of the 68 teams that played it. The highest was €79,003.
 
 ## How it decides
 
@@ -38,7 +41,7 @@ Two estimates, and one rule that uses them.
 
 **The chance that a driver takes a car in time.** A logistic curve on what a dispatcher knows at the quote: the awake hours until the last pickup, the length of the drive, the fee over the typical fee, the drivers who live within 100 km of each end, and how many of our orders already wait for a driver. It is fitted on 29,597 orders from 80 weeks that we played with random prices and fees (`analysis/fit.py`).
 
-**The chance that a dealer takes a price.** A logistic curve in the log of the price over the list price, divided by the dealer's trust: 1% for each order that we delivered to it on time, as the rules say and as the fit confirms. Each lane has a level that holds in every world. The day's level does not hold: the desk learns it from each quote that wins or loses, one step of Bayes at a time, and widens its belief each morning. A price war shows as a low level within the first quotes of its day.
+**The chance that a dealer takes a price.** A logistic curve in the log of the price over the list price, divided by the dealer's trust: 1% for each order that we delivered to it on time, as the rules say and as the fit confirms. Each lane has a level that holds in every world. The day's level does not hold: the desk learns it from each quote that wins or loses, one step of Bayes at a time, and widens its belief each morning. A price war shows as a low level within the first quotes of its day. The same step of Bayes also learns this week's own parts of the competitor's prices: a tilt by the lane's length, and a level for each pickup place and each delivery place.
 
 **The rule.** For each option of a request, the desk picks the opening fee with the lowest expected cost among the fees at which a driver comes in time often enough. Then it quotes the price with the highest expected profit: the chance that the dealer takes it, times what it leaves after that cost. An option without such a fee gets no price.
 
@@ -56,6 +59,7 @@ On top of that, each idea below has a reason and a measured effect, on the same 
 | A lower minimum chance | The curve is cautious: it says 94.7% in time where 97.3% are. So the desk asks it for 0.84, not 0.90, and lets more orders wait for a driver. | +€1,024 on top of the row above |
 | Fee raises before the last hours | A gig that is not taken at its opening fee goes up in two steps before the steep last hours. | +€448, and more cars on time |
 | Riskier cars while there is room | Long lanes earn €80 to €100 a car. The desk takes them, and others, at a lower chance only while the week's late share is under 3%. | +€367 and +€345 |
+| The competitor's own moves | The handbook says how the competitor's prices move in a week: once, its price list changes shape, so short and long lanes move in opposite directions, and some mornings its prices for cars leaving a place, or arriving there, move a step. The learner has one part for each. On 80 weeks with random prices it predicts the next answer 3.9% better. | +€314 on 120 weeks, and 0.8 fewer late cars a week |
 | Trade-ins | Their list price is 1.9 times the typical fee, against 1.1 for other cars. The world lets a driver bring the new car after the customer's booked hour, so the gig carries its own window on that stop: 94% arrive inside it. | +€204 |
 
 ## What did not work
@@ -71,6 +75,11 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
 - Two beliefs about the day's price level each morning, an ordinary day and a price war day: €430 to €640 a week less than the single belief that starts from yesterday (`m-regimes*`).
 - A pickup window that ends before the last pickup minute, so that a drive that runs long still ends in time: no more cars on time, €120 to €235 a week less (`b-*`).
 - A lower minimum chance for private addresses (`pv-*`), and other shapes of the fee raises (`r-*`).
+- A new car that stays off the app for 30 to 120 minutes, so that a return car that we win later still finds it as a partner: 15 more pairs a week, and €65 to €314 a week less. A pair saves little against two easy cars, which book alone at 0.85 of the typical fee (`pi-*`).
+- Town effects in the driver curves: 1.3% better on paper, no gain on 120 weeks (`t-towns`).
+- Direct offers to the drivers who looked at a gig and did not book it: 15 of 959 were accepted, and 2 of 331 at the fee in the app. A driver who looks and leaves needs a higher fee (`w-vo-smoke`).
+- A driver level learned during the week, as the dealers' level is: it predicts the next gigs worse than the fixed curve, because a quick booking is known at once and a gig without a driver only hours later.
+- A lower price factor with the new learner (`qg-103`).
 
 ## What would break it
 
@@ -89,7 +98,7 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 
 .venv/bin/python dispatch.py --level 8 --seed eval-01          # one practice week
 .venv/bin/python -m eval.run --label try --set l8              # the 20 tuning weeks, 8 at a time
-.venv/bin/python -m eval.compare v16 try                       # week by week against a version in the log
+.venv/bin/python -m eval.compare v17 try                       # week by week against a version in the log
 ./play_ranking_round.sh 8                                      # the five weeks of the current ranking round
 ./run_final.sh                                                 # the final or a test final: waits, plays, restarts itself
 ```
@@ -108,7 +117,7 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 | `desk/play.py`, `desk/live.py` | The loops: a practice world, and the live final |
 | `eval/` | The harness: fixed weeks, parallel runs, the log, the comparison |
 | `analysis/` | Fits the curves, scores the note reader |
-| `results/runs.csv` | One row for each week played: 4,210 weeks under 148 labels so far |
+| `results/runs.csv` | One row for each week played: over 5,000 weeks under 170 labels so far |
 | `context/` | The challenge's rules, handbook and kits, and our first notes |
 
 ## Robustness

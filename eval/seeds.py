@@ -24,6 +24,8 @@ SETS: dict[str, list[Week]] = {
     # Weeks for experiments that measure the market, such as random prices: never the evaluation weeks.
     "explore": weeks(8, "x", 40),
     "explore2": weeks(8, "x", 80)[40:],
+    # 80 more weeks, for effects too small to see on 40: on 120 weeks the standard error of a paired difference is about 100 euros.
+    "l8-more": weeks(8, "more", 80),
     # HANDBOOK.md prints the kit starter's result on this week: -72,612.51 at 45.5% on time.
     # The starter must score exactly that through the harness.
     "known": [(8, "spread-1")],

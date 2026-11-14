@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import math
 import random
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import IO, NamedTuple, Optional
 
@@ -48,6 +48,10 @@ SETTINGS = {
     "pair_back": 120,  # ... and from the second car's delivery back to the first car's pickup. The way back may be longer than the hop (p-hop*)
     "pair_fee": 0.75,  # the pair's fee, over the sum of the two typical fees
     "pair_wait": 90,  # minutes at most that the driver waits for the second car to be ready
+    # A car that we post alone is mostly booked within minutes, and then a return car that we win an hour later has no partner.
+    # So a new car that could go in a pair stays off the app for a while, as long as requests still arrive and its pickup is far.
+    # Measured: 65, 181 and 314 a week less for 30, 60 and 120 minutes (pi-*). A pair saves little against two easy cars, which book alone at 0.85.
+    "pair_hold": [0, 10],  # [minutes that it waits for a partner, awake hours that must be left before its fee ladder]; 0 minutes: post at once
     "pair_rise": [],  # raises of a pair's fee before the ladder, as `rise` for a single car
     "pair_quotes": False,  # price a request lower when its car pairs with an order that waits for a driver. Measured: worse, the pair seldom forms (v10-pairquote)
     "pair_odds": 0.8,  # how often such a pair then finds its driver
@@ -63,11 +67,17 @@ SETTINGS = {
     "offer_fee": 0.75,  # the fee of such an offer, over the typical fee
     "offer_fee_home": 0.6,  # ... when the gig ends within 40 km of the driver's home
     "explore_offers": [],  # an exploring desk draws the offer's fee from these
+    # Direct offers to the drivers who looked at a gig and did not book it. In the app such a driver holds out while they expect
+    # the fee to rise before another driver books. An offer has no raise to wait for: the driver takes it when the fee pays.
+    # Measured in one week: 15 of 959 offers accepted, and 2 of 331 at the fee in the app. A driver who looks and leaves needs a higher fee (w-vo-smoke)
+    "viewer_offers": [0, 1.0, 30],  # [minutes that a gig waits in the app first, the offer's fee over the fee in the app, km at most from the driver's home to the delivery]; 0 minutes: none
+    "explore_viewer_offers": [],  # an exploring desk draws the offer's fee, over the fee in the app, from these
     "explore_caps": [25, 40, 60, 90],  # an exploring desk draws its max_waiting from these, by the world's number of drivers
     # Fees, over the typical fee
     "fees": [0.85, 0.95, 1.05, 1.15, 1.25, 1.35, 1.5, 1.7, 1.85, 2.0],  # the opening fees to choose from. Lower ones book too slowly (v4-f70 against v4-f85)
     "rise": [[0.25, 1.15], [0.6, 1.3]],  # raises before the ladder: [share of the time until the ladder, fee over the opening fee]. On 40 weeks: 450 a week more, and more cars on time (y-rise)
     "judge_at": 1.0,  # the fee, over the opening fee, at which we judge the chance of a driver in time
+    "driver_towns": False,  # the driver curves count each town's own effect, beyond the drivers who live near it. Measured on 120 weeks: no gain (t-towns)
     "fallback": 1.6,  # what a gig costs when no driver takes it before the ladder
     # A new gig starts below its fee for a few minutes: half of all gigs are taken within a quarter of an hour, so some
     # driver would have come for less. Most drivers see a gig later, and then at its full fee.
@@ -84,11 +94,16 @@ SETTINGS = {
     # So we never hold more cars due on one day than the week can afford to lose a quarter of.
     "guard_on_time": 0.94,  # the on-time share that the week must keep in the worst case. Measured on 40 weeks: worst week 91.3% without, 94.1% with, the margin unchanged (g94-x)
     "guard_orders": 350,  # the week's orders to count on, before that many are won
+    "guard_pace": False,  # count on fewer when the week wins orders at a slower pace: small weeks have the lowest on-time shares (120 weeks: 95.0% under 330 orders, 97.0% over 380)
     "guard_loss": 0.25,  # the share of a day's cars that a day with few drivers makes late
     "guard_loss_after": 0.1,  # ... once the week's day with few drivers has come
     "regimes": False,  # hold two beliefs about the day's level each morning: an ordinary day near the week's level, and a price war day
     "slope_scale": 1.0,  # a factor on the fitted slope of the dealer curve
     "dealer_sd": 0.0,  # how far a dealer's own level may lie from the day's, in the curve's units; 0: one level for all dealers
+    # This week's own parts of the competitor's prices, learned like the day's level: [how far the part lies from zero, in the curve's units, and the share of it that holds overnight].
+    # On 80 weeks with random prices they predict the next answer 3.9% better. In play, on 120 weeks: 314 a week more than without them (standard error 105), and 0.8 fewer late cars a week (q-both)
+    "tilt": [0.5, 0.7],  # by the lane's length: once a week the competitor's price list changes shape. 0: no tilt
+    "places": [0.6, 0.7],  # a level for each pickup place and each delivery place: some mornings the competitor moves its prices there. 0: none
     "outages": False,  # look for the region where the competitor is down for a day, and price its dealers higher. Measured: found in 18 of 20 weeks, but mostly in the afternoon; no gain (v9-outage)
     "late_opening": 1.2,  # a late car: the fee until the next refund step comes near
     "late_ladder": [[240, 1.5], [120, 2.0]],
@@ -135,7 +150,8 @@ class Desk:
         self.limit_now = float("inf")
         self.spare_now = True
         self.pairable: list[dict] = []  # during one look: the waiting orders that can go in a pair
-        self.market = (RegimeMarket if self.set["regimes"] else Market)(level, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"])
+        self.market = (RegimeMarket if self.set["regimes"] else Market)(level, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"],
+                                                                           minutes=self.minutes, tilt=tuple(self.set["tilt"]), places=tuple(self.set["places"]))
         self.tally: Counter = Counter()  # what the desk did with each request, for the day's report
         if self.set["explore"]:
             self.set["max_waiting"], self.set["max_urgent"] = self.set["explore_caps"][len(roster) % len(self.set["explore_caps"])], 10 ** 6
@@ -144,6 +160,10 @@ class Desk:
         self.facts: dict[str, notes.Facts] = {}  # request id -> what its note says
         self.judging: set[str] = set()  # requests with a quote that the dealer has not judged yet
         self.hold: dict[str, int] = {}  # order id -> no new gig before this minute, after the world refused one
+        self.won_at: dict[str, int] = {}  # order id -> the minute we won it
+        self.looked: dict[str, dict[str, int]] = defaultdict(dict)  # order id -> the drivers who viewed a gig of it, with the minute of their last view
+        self.tried: dict[str, set] = defaultdict(set)  # order id -> the drivers who got an offer of it as its viewers
+        self.off_app: set[str] = set()  # the orders that wait for a partner at this look: no driver can see them yet
         self.bare: set[str] = set()  # orders whose gigs go without stop windows of their own: one of them has ended
         self.changed: set[str] = set()  # orders with a change of plan since the last look
         self.last_seq = -1  # the last event that the desk has read
@@ -162,6 +182,9 @@ class Desk:
         kind = event["kind"]
         if kind == "price_request":
             self.facts[event["request"]["id"]] = notes.read(event["request"].get("note"), event["request"]["arrivedAt"])
+        elif kind == "gig_viewed" and self.set["viewer_offers"][0]:
+            for order_id, _ in getattr(self.books.gigs.get(event["gigId"]), "legs", ()):
+                self.looked[order_id][event["driverId"]] = event["at"]
         elif kind == "order_changed":
             self.changed.add(event["order"]["id"])
         elif kind == "gig_expired":
@@ -186,6 +209,8 @@ class Desk:
             self.alone.add(event["orderId"])
         elif kind in ("order_won", "order_lost"):
             request_id = event["order"]["id"] if kind == "order_won" else event["requestId"]
+            if kind == "order_won":
+                self.won_at[request_id] = event["at"]
             self.judging.discard(request_id)
             self.learn(request_id, event["order"] if kind == "order_won" else None, event["at"])
         self.books.on_event(event)
@@ -248,6 +273,8 @@ class Desk:
         self.raise_for_short_day()
         if self.set["offers"]:
             self.offer_to_free_drivers()
+        if self.set["viewer_offers"][0]:
+            self.offer_to_viewers()
         actions, self.outbox = self.outbox, []
         self.sent, self.meta = (actions, self.meta), []
         return actions
@@ -276,6 +303,8 @@ class Desk:
             return now + self.set["tick"] if AWAKE[0] <= now % DAY < AWAKE[1] else (now // DAY + (now % DAY >= AWAKE[1])) * DAY + AWAKE[0]
         waits = [gig.until + 1 for gig in self.books.gigs.values() if gig.status == "open" and gig.until >= now]
         waits += [minute for minute in self.hold.values() if minute > now]
+        if self.set["viewer_offers"][0] and AWAKE[0] <= now % DAY < AWAKE[1] and any(gig.status == "open" for gig in self.books.gigs.values()):
+            waits.append(now + 30)  # an offer is open for 10 minutes: look again soon, for the next viewers
         return min([now + 3 * HOUR] + waits)
 
     def wake_on(self, now: int) -> list[str]:
@@ -300,10 +329,12 @@ class Desk:
         return sum(1 for order in self.books.waiting() if awake_between(self.now, order["lastPickupAt"] - self.set["reach"]) <= ladder)
 
     def load(self) -> float:
-        """Our orders without a driver, and half of the quotes that dealers have not judged yet."""
-        return len(self.books.waiting()) + len(self.judging) / 2
+        """Our orders without a driver, and half of the quotes that dealers have not judged yet. A car that waits
+        for a partner is not in the app, so it does not compete for drivers yet."""
+        return sum(1 for order in self.books.waiting() if order["id"] not in self.off_app) + len(self.judging) / 2
 
     def quote_requests(self) -> None:
+        self.off_app = {order["id"] for order in self.books.waiting() if self.waits_for_partner(order)} if self.set["pair_hold"][0] else set()
         full = self.load() >= self.set["max_waiting"] or self.urgent() >= self.set["max_urgent"]
         self.due_now, self.limit_now = self.due(), self.day_limit()
         # The week has on-time share to spare when few of its cars are late or at risk: only then it takes the riskier long lanes.
@@ -421,6 +452,7 @@ class Desk:
 
     def best_fee(self, leg: dict, reference: float, post_at: int, until: int, late: float) -> Optional[Plan]:
         pickup, delivery = leg["pickup"], leg["delivery"]
+        towns = (pickup["placeId"], delivery["placeId"]) if self.set["driver_towns"] else ()
         best, floor = None, 0.0
         for fee in self.set["fees"]:
             x = gig_features(awake_between(post_at, until) / 60, self.minutes[(pickup["placeId"], delivery["placeId"])] / 60, fee, self.near[pickup["placeId"]],
@@ -428,10 +460,10 @@ class Desk:
             # The fitted curve gives the share of gigs that a driver takes at a fee or below it: the steps of the schedule walk up it.
             paid, taken = 0.0, 0.0
             for step in [1.0] + [ratio for _, ratio in self.set["rise"]]:
-                share = max(taken, logistic(FITTED["booked_at_opening"], at_fee(x, fee * step)))
+                share = max(taken, logistic(FITTED["booked_at_opening"], at_fee(x, fee * step), towns))
                 paid, taken = paid + (share - taken) * fee * step, share
             paid = reference * (paid + (1 - taken) * max(self.set["fallback"], 1.25 * fee))
-            chance = floor = max(floor, logistic(FITTED["driver_in_time"], at_fee(x, fee * self.set["judge_at"])))  # a higher fee never lowers the chance
+            chance = floor = max(floor, logistic(FITTED["driver_in_time"], at_fee(x, fee * self.set["judge_at"]), towns))  # a higher fee never lowers the chance
             enough = (self.set["min_chance"] if not self.spare_now else self.set["long_chance"][1] if x[2] * 60 >= self.set["long_chance"][0]
                       else self.set["private_chance"] if x[8] or x[9] else self.set["spare_chance"])
             if chance >= enough and (best is None or paid + (1 - chance) * late < best.cost):
@@ -471,8 +503,15 @@ class Desk:
     def day_limit(self) -> float:
         """The most cars that may be due on one day: if that day turns out to have few drivers, the week still keeps its on-time share."""
         seen = any(day >= self.now // DAY - 6 for day in self.short_days)
-        allowed_late = (1 - self.set["guard_on_time"]) * max(self.books.won_count, self.set["guard_orders"]) - self.books.late_count - self.urgent()
+        orders = self.set["guard_orders"]
+        if self.set["guard_pace"] and self.week_share() >= 0.2:  # from Monday evening on, the week's own pace says how many orders it will have
+            orders = min(orders, self.books.won_count / self.week_share())
+        allowed_late = (1 - self.set["guard_on_time"]) * max(self.books.won_count, orders) - self.books.late_count - self.urgent()
         return allowed_late / (self.set["guard_loss_after"] if seen else self.set["guard_loss"])
+
+    def week_share(self) -> float:
+        """The share of the week's request hours that have passed."""
+        return sum(min(10 * HOUR, max(0, min(self.now, day * DAY + 18 * HOUR) - (day * DAY + 8 * HOUR))) for day in range(5)) / REQUEST_MINUTES
 
     def late_cost(self, dealer: str, list_price: int) -> float:
         """What a late car costs beyond its fee: a share of its price, and half of the dealer's trust."""
@@ -580,7 +619,7 @@ class Desk:
     def post_free_cars(self) -> None:
         paired = self.pair_up() if self.set["pairs"] and self.level >= 3 else set()
         for order in list(self.books.orders.values()):
-            if self.hold.get(order["id"], 0) > self.now or order["id"] in paired:
+            if self.hold.get(order["id"], 0) > self.now or order["id"] in paired or self.waits_for_partner(order):
                 continue
             legs = self.books.free_legs(order)
             if len(legs) == 2 and self.level >= 3 and self.drive(order, legs) <= 12 * HOUR:  # a trade-in: the old car's pickup right after the new car's delivery
@@ -588,6 +627,16 @@ class Desk:
             else:
                 for leg in legs:
                     self.post(order, [leg])
+
+    def waits_for_partner(self, order: dict) -> bool:
+        """A new car that could go in a pair, in the minutes that it stays off the app."""
+        minutes, room = self.set["pair_hold"]
+        if not minutes or not self.set["pairs"] or self.level < 3 or order["id"] in self.books.first_posted:
+            return False
+        if self.now >= self.won_at.get(order["id"], -DAY) + minutes or self.now >= LAST_REQUEST or self.now % DAY >= 18 * HOUR:
+            return False  # it has waited, or no request arrives any more today
+        ladder = max(step for step, _ in self.set["ladder"])
+        return self.can_pair(order) and awake_between(self.now, self.stage(order)[1] - self.set["reach"]) - ladder >= room * 60
 
     def post(self, order: dict, legs: list[int]) -> None:
         request, facts = self.books.requests[order["id"]], self.facts.get(order["id"], notes.Facts())
@@ -800,6 +849,45 @@ class Desk:
             gig.post = {**gig.post, "schedule": self.fees(order, reference, stage, until)}
             self.send({"type": "reprice", "gigId": gig.id, "schedule": gig.post["schedule"]})
             gig.stage, gig.until = stage, until
+
+    def offer_to_viewers(self) -> None:
+        """A gig that has waited in the app goes, as a direct offer at the fee in the app, to the drivers who looked at it
+        and live near its delivery: the nearest first, three at a time, each driver once for an order. A viewer who lives
+        within 30 km of the delivery books one gig in eight that they look at; other viewers, one in forty."""
+        minutes, ratio, km = self.set["viewer_offers"]
+        if not AWAKE[0] <= self.now % DAY < AWAKE[1] - 15:  # no driver reads an offer at night
+            return
+        sent, day = 0, self.now // DAY
+        for gig in sorted(self.books.gigs.values(), key=lambda gig: gig.until):  # the most urgent gig first
+            order = self.books.orders.get(gig.legs[0][0]) if gig.legs else None
+            room = 3 - len(self.books.offers_open[gig.id])
+            if gig.status != "open" or order is None or room <= 0 or self.now - gig.posted_at < minutes or gig.until < self.now + 30 or sent >= 30:
+                continue
+            audience = gig.post["audience"]
+            last = self.books.orders[gig.legs[-1][0]]["legs"][gig.legs[-1][1]]
+            delivery = last["delivery"]["placeId"]
+            near = []
+            for driver in {driver for order_id, _ in gig.legs for driver in self.looked.get(order_id, ())} - self.tried[order["id"]]:
+                profile = self.drivers.get(driver)
+                if (profile is None or self.books.offers_sent[(driver, day)] >= 3 or (audience["manualLicence"] and profile["licence"] != "manual")
+                        or (audience["experienced"] and not (profile["rating"] >= 4.8 and profile["completedGigs"] >= 50))):
+                    continue
+                away = self.air[(profile["homePlaceId"], delivery)]
+                if away <= km:
+                    near.append((away, driver))
+            reference = self.reference_of(gig.legs)
+            shown = max(step["feeCents"] for step in gig.post["schedule"] if step["at"] <= self.now)  # the fee in the app now
+            for away, driver in sorted(near)[:room]:
+                if self.set["explore_viewer_offers"]:
+                    ratio = random.Random(f"{self.set['seed']}:viewer:{gig.id}:{driver}").choice(self.set["explore_viewer_offers"])
+                fee = int(shown * ratio + 0.5)
+                self.send({"type": "offer", "gigId": gig.id, "driverId": driver, "feeCents": fee})
+                self.books.offers_sent[(driver, day)] += 1
+                self.books.offers_open[gig.id].add(driver)
+                self.tried[order["id"]].add(driver)
+                sent += 1
+                self.tally["offers to viewers"] += 1
+                print(f"offer: {json.dumps({'at': self.now, 'gig': gig.id, 'driver': driver, 'fee': fee, 'shown': round(shown / reference, 3), 'ratio': ratio, 'km': round(away), 'cars': len(gig.legs), 'open': self.now - gig.posted_at, 'viewed': self.now - max(self.looked[o].get(driver, -1) for o, _ in gig.legs), 'left': gig.until - self.now, 'stage': gig.stage})}")
 
     def offer_to_free_drivers(self) -> None:
         """A driver who has just delivered a car of ours stands far from home, and the app does not

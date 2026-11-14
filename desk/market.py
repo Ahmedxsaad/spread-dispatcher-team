@@ -16,11 +16,20 @@ LEVEL_SHIFT = {4: -4.2, 5: -4.2, 6: -4.2, 7: -1.4}  # the competitor is near the
 
 OUTAGE_Z = 4.0  # how sure the detector must be: on 80 exploration weeks, 4 false alarms in 320 ordinary days
 OUTAGE_SHIFT = (1.2, 3.0)  # the level inside the region rises by this much, in the curve's units: a backup about 30% dearer than the competitor
+LANE_LENGTH = (4.6814, 0.8868)  # the log of a lane's road minutes: its mean and spread over the requests of 80 exploration weeks
 
 
 class Market:
-    def __init__(self, level: int, day_sd: float = 1.3, regions: Optional[dict] = None, outages: bool = True, dealer_sd: float = 0.0, slope_scale: float = 1.0):
+    def __init__(self, level: int, day_sd: float = 1.3, regions: Optional[dict] = None, outages: bool = True, dealer_sd: float = 0.0, slope_scale: float = 1.0,
+                 minutes: Optional[dict] = None, tilt: tuple = (0.0, 0.0), places: tuple = (0.0, 0.0)):
         fitted = FITTED["dealer"]
+        # The competitor's prices have parts that are new in each world and move during the week (the handbook). Once a
+        # week its price list changes shape, so short and long lanes move in opposite directions. Some mornings its
+        # prices for cars leaving a place, or arriving there, move a step. So on top of the day's level the desk learns
+        # this week's tilt by the lane's length, and this week's level of each pickup place and of each delivery place.
+        self.minutes = minutes or {}  # (pickup place, delivery place) -> road minutes
+        self.own = {"tilt": tilt, "from": places, "to": places}  # part -> (how far it lies from zero, the share of it that holds overnight)
+        self.parts: dict[tuple, list[float]] = {}  # (part, place) -> [mean, variance]
         # Each morning the competitor moves its prices for each dealer by what we won there. So each dealer
         # has a level of its own on top of the day's, learned from that dealer's answers alone.
         self.dealer_sd = dealer_sd  # 0: no level by dealer
@@ -54,12 +63,22 @@ class Market:
     def of_dealer(self, request: dict) -> list[float]:
         return self.dealers.get(request["dealerId"], [0.0, self.dealer_sd ** 2])
 
+    def of_week(self, request: dict) -> list[tuple[list[float], float]]:
+        """This week's own parts that count for the request: each belief with its weight in the score."""
+        leg = request["legs"][0]
+        pickup, delivery = leg["pickup"]["placeId"], leg["delivery"]["placeId"]
+        length = (math.log(max(1, self.minutes.get((pickup, delivery), 108))) - LANE_LENGTH[0]) / LANE_LENGTH[1]
+        return [(self.parts.setdefault((part, place), [0.0, self.own[part][0] ** 2]), weight)
+                for part, place, weight in (("tilt", "", length), ("from", pickup, 1.0), ("to", delivery, 1.0)) if self.own[part][0] > 0]
+
     def score(self, request: dict, markup: float, trust: int, only_later: bool, at: int = 0) -> float:
-        return self.mean + self.of_dealer(request)[0] + self.base(request, markup, trust, only_later) + self.in_outage(request, at)
+        own = sum(belief[0] * weight for belief, weight in self.of_week(request))
+        return self.mean + self.of_dealer(request)[0] + own + self.base(request, markup, trust, only_later) + self.in_outage(request, at)
 
     def chance(self, request: dict, markup: float, trust: int, only_later: bool, at: int = 0) -> float:
         # The level is uncertain: a wider belief flattens the curve (the probit approximation of a logistic-normal mean).
-        z = self.score(request, markup, trust, only_later, at) / math.sqrt(1 + math.pi * (self.var + self.of_dealer(request)[1]) / 8)
+        doubt = self.var + self.of_dealer(request)[1] + sum(belief[1] * weight ** 2 for belief, weight in self.of_week(request))
+        z = self.score(request, markup, trust, only_later, at) / math.sqrt(1 + math.pi * doubt / 8)
         return 1 / (1 + math.exp(-max(-30.0, min(30.0, z))))
 
     def learn(self, request: dict, markup: float, trust: int, only_later: bool, won: bool, day: int, at: int = 0) -> None:
@@ -69,15 +88,20 @@ class Market:
             self.day, self.today = day, []
             for belief in self.dealers.values():  # and the competitor has moved its prices for each dealer
                 belief[1] = min(self.dealer_sd ** 2, belief[1] + (self.dealer_sd / 2) ** 2)
+            for (part, _), belief in self.parts.items():  # each of the week's parts keeps a share of what it learned, and its doubt grows back
+                sd, keep = self.own[part]
+                belief[0], belief[1] = belief[0] * keep, keep ** 2 * belief[1] + (1 - keep ** 2) * sd ** 2
         z = self.score(request, markup, trust, only_later, at)
         p = 1 / (1 + math.exp(-max(-30.0, min(30.0, z))))
-        # One answer says something about the sum of the day's level and the dealer's: each moves by its share of the doubt.
+        # One answer says something about the sum of the day's level and the other parts: each moves by its share of the doubt.
         dealer = self.dealers.setdefault(request["dealerId"], [0.0, self.dealer_sd ** 2])
-        doubt = self.var + dealer[1]
+        live = [(dealer, 1.0)] + self.of_week(request)
+        doubt = self.var + sum(belief[1] * weight ** 2 for belief, weight in live)
         step = (won - p) / (1 + doubt * p * (1 - p))
         shrink = p * (1 - p) / (1 + doubt * p * (1 - p))
-        self.mean, dealer[0] = self.mean + self.var * step, dealer[0] + dealer[1] * step
-        self.var, dealer[1] = self.var * (1 - self.var * shrink), dealer[1] * (1 - dealer[1] * shrink)
+        self.mean, self.var = self.mean + self.var * step, self.var * (1 - self.var * shrink)
+        for belief, weight in live:
+            belief[0], belief[1] = belief[0] + belief[1] * weight * step, belief[1] * (1 - belief[1] * weight ** 2 * shrink)
         if self.regions and day % 7 < 5 and 8 * HOUR <= at % DAY < 18 * HOUR and self.outage is None:
             self.today.append((request["legs"][0]["pickup"]["placeId"], self.base(request, markup, trust, only_later), won))
             if len(self.today) >= 30 and len(self.today) % 5 == 0:
