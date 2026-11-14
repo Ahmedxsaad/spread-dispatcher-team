@@ -47,6 +47,7 @@ SETTINGS = {
     "greed_slope": 0.0,  # how much the factor rises for each unit of the day's level above the level of an average day, in the curve's units; 0: one factor
     "greed_range": [1.02, 1.09],  # the factor stays inside this range
     "greed_load": [0.0, 30],  # [how much the factor rises for each order without a driver above the usual number, that number]: with few cars waiting, drivers are free for more; 0: no such rise
+    "early_week_greed": 0.0,  # optional price factor for Monday and Tuesday, while the week has its most driver capacity available
     "greed_later": 0.0,  # the factor for a car due after the weekend: the driver curve says 88 in 100 of them get a driver in time, and 97 in 100 do, so their cost is put too high; 0.0: as any other car
     "greed": 1.06,  # a factor on the price that the models choose. Dealers react less to our price than the fitted curve says: 1.00 makes 14,027 a week, 1.06 14,785, 1.12 13,895 (g-*)
     "decline": 3.0,  # a price that no dealer takes, over the list price: a quote that loses costs nothing
@@ -466,6 +467,8 @@ class Desk:
                     low, high = self.set["greed_range"]
                     factor += self.set["greed_slope"] * (self.market.mean - AVERAGE_LEVEL) + self.set["greed_load"][0] * (self.load() - self.set["greed_load"][1])
                     factor = max(low, min(high, factor))
+                if self.set["early_week_greed"] and request["arrivedAt"] // DAY in (0, 1):
+                    factor = self.set["early_week_greed"]
                 if self.set["greed_later"] and plan.until // DAY > 4:
                     factor = self.set["greed_later"]
                 markup *= factor
