@@ -50,8 +50,9 @@ def main() -> None:
 def play_final(config: dict) -> None:
     """Waits for the final, plays it to its end, and survives a server that restarts. The desk
     rebuilds its books from the world, so this can be stopped and started again at any minute."""
-    from desk.live import play_live
+    from desk.live import play_live, remember_names
 
+    remember_names()  # from the first request on: the wait for the final already resolves the server's name
     while True:
         try:
             client = Client()

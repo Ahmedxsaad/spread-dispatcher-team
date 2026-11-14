@@ -4,6 +4,7 @@ second. It can stop and start again at any minute: it rebuilds the books from th
 history and its own list of orders and gigs, and from a journal of its quotes on disk."""
 from __future__ import annotations
 
+import socket
 import time
 import traceback
 from pathlib import Path
@@ -18,10 +19,32 @@ LOOK_EVERY = 0.4  # real seconds between two checks of the clock while events ke
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
+def remember_names() -> None:
+    """A name server that does not answer must not stop the desk: when a look-up fails, the address that the
+    same look-up gave before is used again. On the evening of 14 November the hall's network lost its name
+    server for seconds at a time, and each time the desk had to join its world again."""
+    if getattr(socket.getaddrinfo, "remembers", False):
+        return
+    look_up, known = socket.getaddrinfo, {}
+
+    def getaddrinfo(host, port, *args, **kwargs):
+        key = (host, port, args, tuple(sorted(kwargs.items())))
+        try:
+            known[key] = look_up(host, port, *args, **kwargs)
+        except socket.gaierror:
+            if key not in known:
+                raise
+        return known[key]
+
+    getaddrinfo.remembers = True
+    socket.getaddrinfo = getaddrinfo
+
+
 def play_live(world: World, level: int, config: Optional[dict] = None, journal_folder: str = "results/journal",
               world_minute: Optional[Callable[[], int]] = None) -> None:
     """Plays a world whose clock moves by itself until the world ends. `world_minute` reads the
     clock when no event comes; by default it asks for the final's clock."""
+    remember_names()
     client = world.client
     world_minute = world_minute or (lambda: client.final()["now"])
     world_map = None
