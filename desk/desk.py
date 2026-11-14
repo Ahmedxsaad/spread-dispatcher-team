@@ -99,6 +99,7 @@ SETTINGS = {
     # In play, with our raises before the last hours: 292 a week less and no more cars on time (qh-75). Off.
     "hard": [0.0, 1.0],  # [the share of such cars that book at the lowest opening fee, below which a car opens higher; the lowest fee for such a car]; 0.0: never
     "rise": [[0.25, 1.15], [0.6, 1.3]],  # raises before the ladder: [share of the time until the ladder, fee over the opening fee]. On 40 weeks: 450 a week more, and more cars on time (y-rise)
+    "rise_before_ready": 0,  # ordinary single cars: defer early fee raises until this many minutes before pickup readiness
     "judge_at": 1.0,  # the fee, over the opening fee, at which we judge the chance of a driver in time
     "driver_towns": False,  # the driver curves count each town's own effect, beyond the drivers who live near it. Measured on 120 weeks: no gain (t-towns)
     "fallback": 1.6,  # what a gig costs when no driver takes it before the ladder
@@ -894,7 +895,14 @@ class Desk:
         early = [(until // DAY * DAY + minute, ratio) for minute, ratio in self.set["short_day_steps"]] if stage == 0 and until // DAY in self.short_days else []
         if stage == 0 and new and not early:
             opening, early = self.intro(opening, until, self.set["intro"])
-        return schedule(self.now, reference, opening, until - self.set["reach"], ladder, rise, single=self.level == 1, early=early)
+        rise_from = self.now
+        if self.set["rise_before_ready"] and rise and not early and len(order["legs"]) == 1:
+            leg = order["legs"][0]
+            if not (leg["car"]["premium"] or leg["pickup"]["privateAddress"] or leg["delivery"]["privateAddress"]):
+                facts = self.facts.get(order["id"]) or notes.Facts()
+                ready = max(leg["pickup"]["window"]["from"], facts.ready_at or 0)
+                rise_from = max(self.now, ready - self.set["rise_before_ready"])
+        return schedule(self.now, reference, opening, until - self.set["reach"], ladder, rise, single=self.level == 1, early=early, rise_from=rise_from)
 
     def intro(self, fee: float, until: int, intro: list) -> tuple[float, list]:
         """The opening discount: the fee to show now, and the step back to the gig's fee. No discount when the ladder is near."""
@@ -1088,7 +1096,7 @@ def narrower(stop: dict, window: dict, base: dict) -> dict:
     return {**stop, "window": window} if window["from"] > base["from"] or window["to"] < base["to"] else stop
 
 
-def schedule(now: int, reference: float, opening: float, book_by: int, ladder: list, rise: list = (), single: bool = False, early: list = ()) -> list[dict]:
+def schedule(now: int, reference: float, opening: float, book_by: int, ladder: list, rise: list = (), single: bool = False, early: list = (), rise_from: int = 0) -> list[dict]:
     """A fee schedule in three parts. The opening fee now. Early raises over the opening fee, each
     after a share of the awake time before the ladder. Then the ladder: fees over the typical fee,
     each a number of awake minutes before the minute by which a driver must have booked. A ladder
@@ -1102,7 +1110,7 @@ def schedule(now: int, reference: float, opening: float, book_by: int, ladder: l
             steps[at] = max(ratio, steps.get(at, 0))
     time = awake_between(now, ladder_from)
     for share, ratio in rise if fee == opening else ():
-        at = awake_after(now, int(time * share))
+        at = max(rise_from, awake_after(now, int(time * share)))
         if now < at < ladder_from:
             steps[at] = max(opening * ratio, steps.get(at, 0))
     result, top = [{"at": now, "feeCents": max(1, int(reference * fee + 0.5))}], fee
