@@ -35,6 +35,7 @@ SETTINGS = {
     "long_chance": [240, 0.70],  # [drive minutes, minimum chance then]: long lanes earn the most a car, 80 to 100 euros. On 40 weeks: 370 a week more (z-long70-spare3)
     "late_cost": 0.6,  # what a late car costs us beyond its fee, as a share of its list price: the refund, and the dealer's goodwill
     "trust_value": 0.0,  # how much of a trust point's worth lowers our price, to win the order and its point. Measured: pricing low to buy trust loses (u-gain0, t-trust2)
+    "trust_rescue": False,  # retry a completely unprofitable menu with dealer goodwill at the time a missed deadline can affect it
     "trust_late": 1.0,  # how much of the trust that a late car loses counts in its cost
     "win_share": 0.4,  # the share of a dealer's later requests that we expect to win
     "min_profit": 200,  # cents: no price for an option that is expected to make less
@@ -416,7 +417,7 @@ class Desk:
                 self.judging.add(request_id)
                 self.send({"type": "quote", "requestId": request_id, "prices": prices})
 
-    def prices(self, request: dict, full: bool) -> Optional[dict]:
+    def prices(self, request: dict, full: bool, delivery_horizon: bool = False) -> Optional[dict]:
         """A price for each option that we offer; None for no quote. An option gets the price with the
         highest expected profit: the chance that the dealer takes it, times what it leaves after the
         car's expected cost, plus what the dealer's trust gains from one more order on time."""
@@ -443,7 +444,7 @@ class Desk:
         gain = self.set["trust_value"] * self.trust_point(dealer) if trust + self.pending(dealer) < 25 else 0.0  # the dealer counts at most 25 orders
         prices, plans, markups = {}, {}, []
         for option in options:
-            plan = self.plan(request, option, request["respondBy"])
+            plan = self.plan(request, option, request["respondBy"], delivery_horizon)
             if plan is None:
                 self.tally["options without a driver in time"] += 1
                 continue
@@ -475,6 +476,8 @@ class Desk:
             fast = next(iter(prices))
             prices[fast] = euros(prices[fast] * self.set["fast_factor"])
         if not prices:
+            if self.set["trust_rescue"] and not delivery_horizon and trust >= 2:
+                return self.prices(request, full, delivery_horizon=True)
             self.tally["declined: no option worth a price"] += 1
             return decline
         self.tally["quoted"] += 1
@@ -485,11 +488,11 @@ class Desk:
             self.journal.write(json.dumps({"request": request["id"], "asked": self.asked[request["id"]], "fees": {kind: plan.fee for kind, plan in plans.items()}}) + "\n")
         return prices
 
-    def plan(self, request: dict, option: dict, post_at: int) -> Optional[Plan]:
+    def plan(self, request: dict, option: dict, post_at: int, delivery_horizon: bool = False) -> Optional[Plan]:
         """The opening fee with the lowest expected cost, among the fees at which a driver takes the car
         in time often enough. None when no fee does."""
         if len(request["legs"]) > 1:
-            return self.plan_trade_in(request, option, post_at)
+            return self.plan_trade_in(request, option, post_at, delivery_horizon)
         facts = self.facts.get(request["id"]) or notes.Facts()
         leg = self.real(request["legs"][0], facts)
         deadline = option["deadline"]
@@ -501,9 +504,9 @@ class Desk:
             return None
         if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
             return None  # few drivers work today: no new car that needs one today
-        return self.best_fee(leg, request["referenceFeeCents"], post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"]))
+        return self.best_fee(leg, request["referenceFeeCents"], post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"], min(deadline, facts.deliver_by or deadline) if delivery_horizon else None))
 
-    def plan_trade_in(self, request: dict, option: dict, post_at: int) -> Optional[Plan]:
+    def plan_trade_in(self, request: dict, option: dict, post_at: int, delivery_horizon: bool = False) -> Optional[Plan]:
         """A trade-in goes as one gig at one fee: the new car to the customer inside the booked hour,
         then the old car back in the same visit. None when the two drives pass the 12 hours of a
         gig with two cars, or when a driver is unlikely to take it in time."""
@@ -525,7 +528,7 @@ class Desk:
         if chance < (self.set["trade_in_chance"] or (self.set["spare_chance"] if self.spare_now else self.set["min_chance"])):
             return None
         paid = request["referenceFeeCents"] * self.set["trade_in_cost"]
-        return Plan(fee, chance, paid + (1 - chance) * self.late_cost(request["dealerId"], option["listPriceCents"]), until, paid)
+        return Plan(fee, chance, paid + (1 - chance) * self.late_cost(request["dealerId"], option["listPriceCents"], option["deadline"] if delivery_horizon else None), until, paid)
 
     def best_fee(self, leg: dict, reference: float, post_at: int, until: int, late: float) -> Optional[Plan]:
         pickup, delivery = leg["pickup"], leg["delivery"]
@@ -634,20 +637,23 @@ class Desk:
         """The share of the week's five request days that the desk plays: all of them, unless it joined late and counts its days from the join."""
         return max(1, 5 - self.first_day) / 5
 
-    def week_share(self) -> float:
+    def week_share(self, at: Optional[int] = None) -> float:
         """The share of the week's request hours that have passed."""
-        return sum(min(10 * HOUR, max(0, min(self.now, day * DAY + 18 * HOUR) - (day * DAY + 8 * HOUR))) for day in range(5)) / REQUEST_MINUTES
+        minute = self.now if at is None else at
+        return sum(min(10 * HOUR, max(0, min(minute, day * DAY + 18 * HOUR) - (day * DAY + 8 * HOUR))) for day in range(5)) / REQUEST_MINUTES
 
-    def late_cost(self, dealer: str, list_price: int) -> float:
+    def late_cost(self, dealer: str, list_price: int, deadline: Optional[int] = None) -> float:
         """What a late car costs beyond its fee: a share of its price, and half of the dealer's trust."""
         trust = self.books.trust[dealer]
-        return self.set["late_cost"] * list_price + self.set["trust_late"] * (trust - trust // 2) * self.trust_point(dealer)
+        return self.set["late_cost"] * list_price + self.set["trust_late"] * (trust - trust // 2) * self.trust_point(dealer, max(self.now, deadline) if deadline is not None else self.now)
 
-    def trust_point(self, dealer: str) -> float:
+    def trust_point(self, dealer: str, at: Optional[int] = None) -> float:
         """What one more order on time is worth, in cents: the dealer then accepts 1% more on each
         later order of the week. A dealer's size is about the same in every world."""
-        done = sum(min(10 * HOUR, max(0, min(self.now, day * DAY + 18 * HOUR) - (day * DAY + 8 * HOUR))) for day in range(5)) / REQUEST_MINUTES
-        weekly = FITTED["dealer_requests_a_week"].get(dealer, self.books.dealer_requests[dealer] / max(done, 0.2))
+        done = self.week_share(at)
+        weekly = FITTED["dealer_requests_a_week"].get(dealer)
+        if weekly is None:
+            weekly = self.books.dealer_requests[dealer] / max(self.week_share(), 0.2)
         price = FITTED["dealer_list_price"].get(dealer, 8000)
         return 0.01 * weekly * (1 - done) * self.set["win_share"] * price
 
@@ -878,7 +884,7 @@ class Desk:
         untils = [order["lastPickupAt"]]
         if self.noted(facts):  # the world's last pickup minute follows the stated hours and deadline: ours follows the note
             order = {**order, "legs": [self.real(order["legs"][0], facts)] + order["legs"][1:]}
-            untils = [min(order["lastPickupAt"], self.last_pickup(order, min(deadline, facts.deliver_by or deadline)))]
+            untils = [min(order["lastPickupAt"], self.last_pickup(order, min(deadline, facts.deliver_by or deadline) if delivery_horizon else None))]
         untils += [self.last_pickup(order, minute) for minute in later]
         for stage, until in enumerate(untils):
             if until > self.now:
