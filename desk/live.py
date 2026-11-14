@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import http.client
 import socket
+import threading
 import time
 import traceback
 from pathlib import Path
 from typing import Callable, Optional
 
-from spread.client import SpreadError, Unreachable, World
+from spread.client import Client, SpreadError, Unreachable, World
 
 from .clock import DAY, clock
 from .desk import Desk
@@ -19,6 +20,7 @@ from .desk import Desk
 LOOK_EVERY = 0.4  # real seconds between two checks of the clock while events keep coming
 QUICK = 4.0  # real seconds that a request in play waits for an answer: a quote that is older is late anyway. The kit waits 20
 JOIN = 20.0  # ... and while the desk joins a world, whose history is a long answer
+CLOCK = 2.0  # ... and for the clock, which is asked again at once
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -62,6 +64,26 @@ def set_patience(client, seconds: float) -> None:
     client.patience = seconds
 
 
+class Clock:
+    """The world's minute, read in the background on a connection of its own. A read that gets no answer then
+    holds nothing up: the desk goes on with the minute it has, and the requests that arrive meanwhile get their quotes."""
+
+    def __init__(self, read: Callable[[], int]) -> None:
+        self.now, self.read = 0, read
+        threading.Thread(target=self.run, daemon=True).start()
+
+    def run(self) -> None:
+        while True:
+            try:
+                self.now = max(self.now, self.read())
+            except Exception:  # no answer: the next read comes at once
+                pass
+            time.sleep(LOOK_EVERY)
+
+    def minute(self) -> int:
+        return self.now
+
+
 def recover(world: World, desk: Desk, error: Exception, tries: int = 3) -> None:
     """A request got no answer. The desk keeps its books: it reads the events that it missed and the world's own
     list of our orders and gigs, which says which of its last actions arrived, and goes on. Only when that fails
@@ -84,7 +106,10 @@ def play_live(world: World, level: int, config: Optional[dict] = None, journal_f
     clock when no event comes; by default it asks for the final's clock."""
     remember_names()
     client = world.client
-    world_minute = world_minute or (lambda: client.final()["now"])
+    if world_minute is None:  # the final's clock
+        watch = Client()
+        set_patience(watch, CLOCK)
+        world_minute = Clock(lambda: watch.final()["now"]).minute
     world_map, failed = None, 0
     while True:
         try:
