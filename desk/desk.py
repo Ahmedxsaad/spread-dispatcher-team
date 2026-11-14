@@ -101,6 +101,7 @@ SETTINGS = {
     "rise": [[0.25, 1.15], [0.6, 1.3]],  # raises before the ladder: [share of the time until the ladder, fee over the opening fee]. On 40 weeks: 450 a week more, and more cars on time (y-rise)
     "judge_at": 1.0,  # the fee, over the opening fee, at which we judge the chance of a driver in time
     "driver_towns": False,  # the driver curves count each town's own effect, beyond the drivers who live near it. Measured on 120 weeks: no gain (t-towns)
+    "one_cent_less": False,  # reduce each posted gig schedule step by one cent
     "fallback": 1.6,  # what a gig costs when no driver takes it before the ladder
     # A new gig starts below its fee for a few minutes: half of all gigs are taken within a quarter of an hour, so some
     # driver would have come for less. Most drivers see a gig later, and then at its full fee.
@@ -736,7 +737,7 @@ class Desk:
             opening, early = self.intro(1.0, until, self.set["pair_intro"])
             action = {"type": "post", "stops": self.stops(x, [0], facts[0]) + self.stops(y, [0], facts[1]),
                       "audience": {"experienced": False, "manualLicence": facts[0].manual or facts[1].manual},
-                      "schedule": schedule(self.now, reference, opening, until - self.set["reach"], self.set["ladder"], self.set["pair_rise"], single=self.level == 1, early=early)}
+                      "schedule": schedule(self.now, reference, opening, until - self.set["reach"], self.set["ladder"], self.set["pair_rise"], single=self.level == 1, early=early, cent_less=self.set["one_cent_less"])}
             self.send(action, at=self.now, order=x_id, stage=0, until=until, pair=[x_id, y_id])
             self.tally["pairs"] += 1
         return paired
@@ -894,7 +895,7 @@ class Desk:
         early = [(until // DAY * DAY + minute, ratio) for minute, ratio in self.set["short_day_steps"]] if stage == 0 and until // DAY in self.short_days else []
         if stage == 0 and new and not early:
             opening, early = self.intro(opening, until, self.set["intro"])
-        return schedule(self.now, reference, opening, until - self.set["reach"], ladder, rise, single=self.level == 1, early=early)
+        return schedule(self.now, reference, opening, until - self.set["reach"], ladder, rise, single=self.level == 1, early=early, cent_less=self.set["one_cent_less"])
 
     def intro(self, fee: float, until: int, intro: list) -> tuple[float, list]:
         """The opening discount: the fee to show now, and the step back to the gig's fee. No discount when the ladder is near."""
@@ -928,9 +929,10 @@ class Desk:
                 continue
             self.raised.add(gig.id)
             reference = self.reference_of(gig.legs)
-            shown = max(step["feeCents"] for step in gig.post["schedule"] if step["at"] <= self.now) / reference  # never below the fee in the app now
+            shown_cents = max(step["feeCents"] for step in gig.post["schedule"] if step["at"] <= self.now)
+            shown = (shown_cents + int(self.set["one_cent_less"])) / reference  # schedule applies the cent adjustment once
             early = [(today * DAY + minute, ratio) for minute, ratio in self.set["short_day_steps"]]
-            gig.post = {**gig.post, "schedule": schedule(self.now, reference, shown, gig.until - self.set["reach"], self.set["ladder"], single=self.level == 1, early=early)}
+            gig.post = {**gig.post, "schedule": schedule(self.now, reference, shown, gig.until - self.set["reach"], self.set["ladder"], single=self.level == 1, early=early, cent_less=self.set["one_cent_less"])}
             self.send({"type": "reprice", "gigId": gig.id, "schedule": gig.post["schedule"]})
 
     def opening(self, order: dict) -> float:
@@ -954,8 +956,8 @@ class Desk:
                 continue
             reference = self.reference_of(gig.legs)
             shown = max(step["feeCents"] for step in gig.post["schedule"] if step["at"] <= self.now)
-            opening = max(shown, gig.fee * self.set["drop_bump"]) / reference
-            gig.post = {**gig.post, "schedule": schedule(self.now, reference, opening, gig.until - self.set["reach"], self.set["ladder"], single=self.level == 1)}
+            opening = max(shown + int(self.set["one_cent_less"]), (gig.fee + int(self.set["one_cent_less"])) * self.set["drop_bump"]) / reference
+            gig.post = {**gig.post, "schedule": schedule(self.now, reference, opening, gig.until - self.set["reach"], self.set["ladder"], single=self.level == 1, cent_less=self.set["one_cent_less"])}
             self.send({"type": "reprice", "gigId": gig.id, "schedule": gig.post["schedule"]})
 
     def review_open_gigs(self) -> None:
@@ -1088,7 +1090,7 @@ def narrower(stop: dict, window: dict, base: dict) -> dict:
     return {**stop, "window": window} if window["from"] > base["from"] or window["to"] < base["to"] else stop
 
 
-def schedule(now: int, reference: float, opening: float, book_by: int, ladder: list, rise: list = (), single: bool = False, early: list = ()) -> list[dict]:
+def schedule(now: int, reference: float, opening: float, book_by: int, ladder: list, rise: list = (), single: bool = False, early: list = (), cent_less: bool = False) -> list[dict]:
     """A fee schedule in three parts. The opening fee now. Early raises over the opening fee, each
     after a share of the awake time before the ladder. Then the ladder: fees over the typical fee,
     each a number of awake minutes before the minute by which a driver must have booked. A ladder
@@ -1105,9 +1107,9 @@ def schedule(now: int, reference: float, opening: float, book_by: int, ladder: l
         at = awake_after(now, int(time * share))
         if now < at < ladder_from:
             steps[at] = max(opening * ratio, steps.get(at, 0))
-    result, top = [{"at": now, "feeCents": max(1, int(reference * fee + 0.5))}], fee
+    result, top = [{"at": now, "feeCents": max(1, int(reference * fee + 0.5) - int(cent_less))}], fee
     for at in sorted(steps):
         if steps[at] > top and not single:
             top = steps[at]
-            result.append({"at": at, "feeCents": max(1, int(reference * top + 0.5))})
+            result.append({"at": at, "feeCents": max(1, int(reference * top + 0.5) - int(cent_less))})
     return result
