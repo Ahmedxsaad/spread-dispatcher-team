@@ -23,6 +23,7 @@ Level 8, mean margin a week on the same 20 practice weeks (`eval-01` to `eval-20
 | `v17` | A market learner that follows the competitor's own moves | €17,408 | 96.8% | 93.6% |
 | `v18` | The easiest cars open at a lower fee | €17,508 | 97.2% | 93.3% |
 | `v19` | A morning alarm for cars that sit; the safest cars still pass once the guard's allowance is spent | €17,416 | 97.1% | 93.3% |
+| `v20` | The guard's reserve for a bad day follows what the week can still bring | €17,431 | 97.1% | 93.3% |
 
 On weeks that no setting was tuned on, `v18` makes €17,690 a week at 97.4% on time (20 weeks, `hold-01` to `hold-20`, lowest week 93.7%).
 
@@ -34,10 +35,22 @@ A gain of a few hundred euros a week does not show on 40 weeks: there the standa
 | `v17` | €17,023 | 96.9% | 91.5% | 12.2 |
 | `v18` | €17,256 | 97.2% | 93.2% | 11.3 |
 | `v19` | €17,263 | 97.2% | 93.2% | 11.4 |
+| `v20` | €17,423 | 97.1% | 92.8% | 11.7 |
 
 `v17` makes €314 a week more than `v16` (standard error €105), and `v18` €233 more than `v17` (standard error €99). Together: €546 (standard error €125), better on 80 of the 120 weeks. All 120 weeks are ranked.
 
 `v19` adds nothing on average (€7 a week, standard error €36): it is insurance for a kind of week, described below.
+
+`v20` makes €160 a week more than `v19` on these 120 weeks. Its gain does not show on the first 20: it sits in the one week in five that has no night of dropped bookings, and only one of those 20 is such a week.
+
+By Saturday evening the 80 `more` weeks had judged dozens of settings, so they flatter the survivors too. `v20` was therefore judged once on 80 weeks that no setting had seen (`check-01` to `check-80`):
+
+| Version | Margin a week on the unseen weeks | On time | Lowest week |
+|---|---|---|---|
+| `v19` | €15,789 | 97.1% | 92.6% |
+| `v20` | €15,970 | 97.0% | 92.6% |
+
+The difference is €181 a week (standard error €59). Over all 200 weeks it is €169 (standard error €37), all 200 are ranked, and the lowest week is the same in both. The level on the unseen weeks, about €16,000, is the one to expect in the final.
 
 The 40 weeks that the settings were tuned on flatter them. `v18` makes €17,599 a week on those 40 and €17,084 on the 80 new ones, at 97.1% on time. The second number is the one to expect. The rhythm test under Robustness shows the same thing from another side: on the tuned weeks, any change of rhythm looks like a loss.
 
@@ -82,6 +95,7 @@ On top of that, each idea below has a reason and a measured effect, on the same 
 | The competitor's own moves | The handbook says how the competitor's prices move in a week: once, its price list changes shape, so short and long lanes move in opposite directions, and some mornings its prices for cars leaving a place, or arriving there, move a step. The learner has one part for each. On 80 weeks with random prices it predicts the next answer 3.9% better. | +€314 on 120 weeks, and 0.8 fewer late cars a week |
 | The easiest cars open lower | In 80 weeks with random opening fees, the cars of which 94 in 100 book at 0.85 of the typical fee cost 0.85 in the end when they opened at 0.70, and 0.93 when they opened at 0.85. For other cars a lower opening fee saves nothing and makes more of them late. So only these cars may open at 0.72. Their expected cost falls, so does their price, and the desk wins more of them. | +€233 on 120 weeks, 0.9 fewer late cars a week, lowest week 91.5% to 93.2% |
 | A morning alarm, and no full stop | In the third week of the Saturday 15:00 round drivers were scarce from Monday: 42 cars had no driver on Monday night, where the most in 120 practice weeks is 37. By Wednesday 25 of 241 cars were late, without the night of dropped bookings that the desk watches for. The guard's allowance was spent, and on Friday the desk priced 3 requests: ranked at 93.3%, and 32nd of the 64 ranked teams. So when 35 cars still wait at 06:00, the fees of the cars due that day rise early, as after a night of drops. And once the allowance is spent, a car that is 95% sure of a driver in time is still priced: it raises the on-time share. | The alarm rang in 6 of 80 new weeks. The one in which the guard had nearly closed made €4,002 more and went from 93.2% to 95.6% on time; over 120 weeks €7 more, every week ranked. The second rule changed no practice week |
+| The reserve follows what the week can still bring | In the Saturday 18:00 round we were first over five weeks and only 12th and 10th in two of them: the guard's limit had turned 183 and 65 options away, and those weeks still ended at 96% and 98% on time. A diagnostic that writes down why each request is declined (it changes no result) showed where the limit costs. Of the 235 requests a week that the desk declines, 131 are worth €1 each by the models and 36 have no driver in time. But 37 are good cars over the day's limit: a driver in time for 88 in 100, €26 of expected profit each, and most are Friday's requests for cars due on Monday. The reveals say what those cars risk: 3% are late, 11% in the worst of 40 weeks, with or without a night of drops on that Monday. They have the weekend to find a driver. So cars due after the weekend get a reserve of 10%, not 25%. And every week that a smaller reserve hurt had 28 or more cars without a driver at some midnight before its bad day: a week that stays under 26 at every midnight reserves 15%. | +€169 on 200 weeks (standard error €37), +€181 on the 80 unseen ones; the lowest week unchanged at 92.6%. The first rule alone: +€125, better in 31 weeks and worse in 4. In the weeks with no night of drops: +€550 to +€920 |
 | Trade-ins | Their list price is 1.9 times the typical fee, against 1.1 for other cars. The world lets a driver bring the new car after the customer's booked hour, so the gig carries its own window on that stop: 94% arrive inside it. | +€204 |
 
 ## What did not work
@@ -107,6 +121,10 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
 - A price factor that follows the market's level, lower in a week with a cheap competitor: 19 more orders in the cheapest quarter of weeks and no more margin; €202 a week less over all weeks (`gl-02`).
 - A tighter guard, 95% in the worst case: €477 a week less, on time 0.3 points up, the lowest week no higher (`gd-95`). And no risk budget at all: €578 less (`ab-nospare`).
 - A looser guard, to win more in the weeks with a dear competitor, where the day's limit turns 62 options a week away. At 93% in the worst case: €197 a week more, and the hardest week falls from 94.4% to 90.9% on time. Counting on a fast week's pace: €154 more, and the same week at 90.7% (`gf-93`, `ga-up`). A final is one week: not taken.
+- The same smaller reserve, 15%, for every week and every day: €171 a week more, and four of 80 weeks under 93% on time, one at 90.9%. Split by the weekday of the night of drops it gains €1,046 a week where no such night comes, nothing where it comes on Friday, and loses €321 where it comes on Thursday (`gl-15`). A smaller reserve pays only where the bad day has passed or the week is calm: that is `v20`.
+- A sign of the day with few drivers in how many drivers look at our gigs: there is none (1.04 of the week's median day on such a day). A bad Monday, when we hold no bookings that drivers could give back, cannot be seen, and Monday's own backlog does not show it either.
+- The competitor's morning move for each dealer, which the handbook describes: a dealer whose requests we all won the day before answers as if our prices were 1.5% higher. Too small for a part of its own.
+- Settings chosen on the first 40 weeks, tried again on fresh ones against `v19`: steeper fee steps on the day with few drivers €270 a week less, a lower fee for pairs €168 less, a lower minimum chance while there is room €150 less, a shorter slack €72 more with a standard error of €110 (`sd-steep`, `pf-72`, `sc-75`, `sl-20`). They stay as they are.
 - The morning alarm with the day's quotes stopped as well, at 30 cars, or as a sign to the guard that the week's bad day has come: the last left one week at 88%, not ranked (`bb-35`, `bb-30`, `ba-35`).
 - A higher opening fee, 1.00, for the cars that book least easily. The randomised weeks, which had no fee raises before the last hours, said it would get more of them a driver in time. With our two raises it does not: €292 a week less, on time unchanged (`qh-75`).
 - A level for each dealer in the new learner: no gain, as before (`qd-03`).
@@ -115,7 +133,8 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
 ## What would break it
 
 - The curves are fitted on level 8 weeks. At other levels the desk is ranked but not tuned.
-- The guard assumes one day with few drivers a week and a loss of a quarter of that day's cars. Two such days, or a worse one, would cost on-time share.
+- The guard assumes one day with few drivers a week and a loss of a quarter of that day's cars: 15% in a calm week, 10% for cars due after the weekend. Two such days, or a worse one, would cost on-time share.
+- The network. On Saturday evening the hall's Wi-Fi dropped for seconds at a time. The desk joins its world again by itself, and after its first request it no longer needs the name server, but each drop costs the requests of those seconds.
 - A week in which drivers are scarce from its first day. The practice weeks hold none as hard as the one of the Saturday 15:00 round, so `v19`'s two rules for it are tested on the weeks nearest to it, not on it.
 
 ## Run it
@@ -156,5 +175,6 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 - The desk rebuilds its books from the world's event history and its own list of orders and gigs. With lost requests and lost answers injected into every kind of call, four weeks scored the same as without (`flaky` tests).
 - The live loop played the Saturday 14:00 test final, a week joined on Thursday: 9th of 55 ranked teams, €3,375, 98.5% on time, no failed look and no late quote.
 - Full weeks played live on practice worlds whose clock moves at the final's pace, or three times as fast: without a restart €19,208 a week on four weeks that make €19,033 in practice mode; with one restart in the middle of each, €19,444. A restart costs nothing that these weeks can show.
+- `v20` played a full week live on a practice world at six times the final's pace while the hall's network dropped three times, with one planned restart across a midnight: €17,362 at 97.4% on time, on a week that makes €18,125 in practice mode and €16,235 with `v19`. The midnight counts that its calm-week rule needs are in the journal, and a desk that starts again reads them back; when one is missing, the week counts as not calm.
 - One look at the books takes 40 ms on average and 0.33 s at worst. A request waits 4.5 s.
 - The live loop keeps the rhythm of the practice weeks: a look at once after an event that cannot wait, and else every 12 minutes of the world. Every measurement here was made at that rhythm, so the final plays at it too. A quote never waits past 6 world minutes before its deadline. How much the rhythm itself is worth is not settled: on the 40 weeks that the settings were tuned on, a look every 3, 9 or 10 minutes makes €200 to €400 a week less, but on 80 fresh weeks a look every 10 minutes makes €127 less with a standard error of €138 (`qt-3`, `qt-9`, `qt-10`).
