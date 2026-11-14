@@ -48,6 +48,7 @@ SETTINGS = {
     "pair_back": 120,  # ... and from the second car's delivery back to the first car's pickup. The way back may be longer than the hop (p-hop*)
     "pair_fee": 0.75,  # the pair's fee, over the sum of the two typical fees
     "pair_wait": 90,  # minutes at most that the driver waits for the second car to be ready
+    "pair_rise": [],  # raises of a pair's fee before the ladder, as `rise` for a single car
     "pair_quotes": False,  # price a request lower when its car pairs with an order that waits for a driver. Measured: worse, the pair seldom forms (v10-pairquote)
     "pair_odds": 0.8,  # how often such a pair then finds its driver
     # Trade-ins: the new car out to the customer and the old car back, one price and one gig. Their list price is about 1.9
@@ -571,7 +572,7 @@ class Desk:
             opening, early = self.intro(1.0, until, self.set["pair_intro"])
             action = {"type": "post", "stops": self.stops(x, [0], facts[0]) + self.stops(y, [0], facts[1]),
                       "audience": {"experienced": False, "manualLicence": facts[0].manual or facts[1].manual},
-                      "schedule": schedule(self.now, reference, opening, until - self.set["reach"], self.set["ladder"], single=self.level == 1, early=early)}
+                      "schedule": schedule(self.now, reference, opening, until - self.set["reach"], self.set["ladder"], self.set["pair_rise"], single=self.level == 1, early=early)}
             self.send(action, at=self.now, order=x_id, stage=0, until=until, pair=[x_id, y_id])
             self.tally["pairs"] += 1
         return paired
