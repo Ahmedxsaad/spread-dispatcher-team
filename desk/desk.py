@@ -117,9 +117,14 @@ SETTINGS = {
     "guard_orders": 350,  # the week's orders to count on, before that many are won
     # Two rules for a week in which drivers are scarce from its start. In one ranking week the cars sat (42 without a driver on Monday night, where
     # 37 is the most in 120 practice weeks), 25 of 241 were late by Wednesday, and then the day's limit let the desk quote 3 requests on Friday: ranked, and 18th.
-    "backlog_alarm": 0,  # this many cars without a driver at 06:00 mark the day as one with few drivers, as the night's drops do; 0: never
+    # The alarm, 35 cars: it rang in 6 of 80 fresh weeks. The week in which the guard had nearly closed the desk made 4,002 more and went from 93.2% to 95.6% on time;
+    # over 120 weeks 7 a week more (standard error 36), every week ranked, the lowest unchanged (bc-35). With the quotes of the day stopped as well: one week at 92.9% (bb-35).
+    # At 30 cars it rings on twice as many mornings and costs more than it saves (bb-30, st-bc30). When it also told the guard that the week's bad day had come: one week at 88% (ba-35).
+    "backlog_alarm": 35,  # this many cars without a driver at 06:00 mark the day as one with few drivers, as the night's drops do; 0: never
+    "alarm_quotes": True,  # on a day that the alarm marked, still price the cars that need a pickup that day: the alarm then only raises the fees of the cars that wait
     "guard_safe": 1.0,  # a car whose chance of a driver in time is at least this does not count against the day's limit: it raises the week's on-time share; 1.0: every car counts
-    "guard_spent_safe": 1.0,  # the same, but only once the week's allowance of late cars is spent: stopping then protects nothing, and a safe car still raises the on-time share; 1.0: never
+    "guard_spent_safe": 0.95,  # (it changed no week of 136: the allowance is spent only in a week like the one above) the same, but only once the week's allowance of late cars is spent: stopping then protects nothing, and a safe car still raises the on-time share; 1.0: never
+    "guard_early": [0.0, 2],  # [the on-time share that the week must keep in the worst case for the cars due early in the week, the last such day (2: Wednesday)]: a late car early in the week is made up for by the orders that follow, one on Friday is not; 0.0: one share for every day
     "guard_ahead": False,  # count on more when the week wins orders at a faster pace: in the weeks with the dearest competitor the day's limit turns 62 options away, in the cheapest 9
     "guard_pace": False,  # count on fewer when the week wins orders at a slower pace: small weeks have the lowest on-time shares (120 weeks: 95.0% under 330 orders, 97.0% over 380)
     "guard_loss": 0.25,  # the share of a day's cars that a day with few drivers makes late
@@ -182,7 +187,7 @@ class Desk:
         self.dropped: set[str] = set()  # gigs that a driver gave back since the last look
         self.needs_sync = False  # the world refused a withdrawal: the books may be wrong
         self.due_now: Counter = Counter()  # during one look: our cars by the day of their last pickup
-        self.limit_now = float("inf")
+        self.limit_now = self.limit_early = float("inf")
         self.spare_now = True
         self.pairable: list[dict] = []  # during one look: the waiting orders that can go in a pair
         kind, more = (RegimeMarket, {}) if self.set["regimes"] else (EventMarket, {"calm_sd": self.set["calm_sd"]}) if self.set["events"] else (Market, {})
@@ -381,7 +386,7 @@ class Desk:
     def quote_requests(self) -> None:
         self.off_app = {order["id"] for order in self.books.waiting() if self.waits_for_partner(order)} if self.set["pair_hold"][0] else set()
         full = self.load() >= self.set["max_waiting"] or self.urgent() >= self.set["max_urgent"]
-        self.due_now, self.limit_now = self.due(), self.day_limit()
+        self.due_now, self.limit_now, self.limit_early = self.due(), self.day_limit(), self.day_limit(early=True)
         # The week has on-time share to spare when few of its cars are late or at risk: only then it takes the riskier long lanes.
         self.spare_now = (self.books.late_count + self.urgent()) / max(self.books.won_count, self.set["guard_orders"] * self.week_left() / 2) < self.set["spare"]
         self.pairable = [order for order in self.books.orders.values() if self.can_pair(order)] if self.books.unquoted else []
@@ -427,8 +432,9 @@ class Desk:
             if plan is None:
                 self.tally["options without a driver in time"] += 1
                 continue
-            safe = min(self.set["guard_safe"], self.set["guard_spent_safe"]) if self.limit_now <= 0 else self.set["guard_safe"]  # a limit of zero or less: the allowance is spent
-            if self.due_now[plan.until // DAY] + 1 > self.limit_now and plan.chance < safe:
+            limit = self.limit_early if plan.until // DAY <= self.set["guard_early"][1] else self.limit_now
+            safe = min(self.set["guard_safe"], self.set["guard_spent_safe"]) if limit <= 0 else self.set["guard_safe"]  # a limit of zero or less: the allowance is spent
+            if self.due_now[plan.until // DAY] + 1 > limit and plan.chance < safe:
                 self.tally["options over the day's limit"] += 1
                 continue
             if self.set["pairs"] and self.set["pair_quotes"] and self.level >= 4:
@@ -473,7 +479,7 @@ class Desk:
         until = self.last_pickup({"legs": [leg] + request["legs"][1:], "deliveredAt": [None] * len(request["legs"])}, min(deadline, facts.deliver_by or deadline))
         if until - max(post_at, ready) < HOUR:
             return None
-        if until // DAY in self.short_days and not self.set["short_day_quotes"]:
+        if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
             return None  # few drivers work today: no new car that needs one today
         return self.best_fee(leg, request["referenceFeeCents"], post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"]))
 
@@ -489,7 +495,7 @@ class Desk:
         until = self.last_pickup(trip, option["deadline"])
         if until - max(post_at, legs[0]["pickup"]["window"]["from"]) < HOUR:
             return None
-        if until // DAY in self.short_days and not self.set["short_day_quotes"]:
+        if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
             return None
         pickup, delivery = legs[0]["pickup"], legs[0]["delivery"]
         fee = self.set["trade_in_fee"]
@@ -562,15 +568,17 @@ class Desk:
                 days[next(iter(plans.values())).until // DAY] += 0.6
         return days
 
-    def day_limit(self) -> float:
-        """The most cars that may be due on one day: if that day turns out to have few drivers, the week still keeps its on-time share."""
+    def day_limit(self, early: bool = False) -> float:
+        """The most cars that may be due on one day: if that day turns out to have few drivers, the week still keeps its on-time share.
+        With `early`, the limit for a day early in the week."""
         seen = any(day >= self.now // DAY - 6 for day in self.drop_days)  # a morning with many cars waiting does not count: the night of drops may still come
         orders = self.set["guard_orders"] * self.week_left()
         if self.set["guard_pace"] and self.week_share() >= 0.2:  # from Monday evening on, the week's own pace says how many orders it will have
             orders = min(orders, self.books.won_count / self.week_share())
         if self.set["guard_ahead"] and self.week_share() >= 0.2:
             orders = max(orders, self.books.won_count / self.week_share())
-        allowed_late = (1 - self.set["guard_on_time"]) * max(self.books.won_count, orders) - self.books.late_count - self.urgent()
+        target = self.set["guard_early"][0] if early and self.set["guard_early"][0] else self.set["guard_on_time"]
+        allowed_late = (1 - target) * max(self.books.won_count, orders) - self.books.late_count - self.urgent()
         return allowed_late / (self.set["guard_loss_after"] if seen else self.set["guard_loss"])
 
     def week_left(self) -> float:
