@@ -26,6 +26,9 @@ SETS: dict[str, list[Week]] = {
     "explore2": weeks(8, "x", 80)[40:],
     # 80 more weeks, for effects too small to see on 40: on 120 weeks the standard error of a paired difference is about 100 euros.
     "l8-more": weeks(8, "more", 80),
+    # By Saturday evening the `more` weeks had judged dozens of settings, so they flatter the survivors too.
+    # These 80 weeks judge a change once, after it is chosen: never choose on them.
+    "l8-check": weeks(8, "check", 80),
     # HANDBOOK.md prints the kit starter's result on this week: -72,612.51 at 45.5% on time.
     # The starter must score exactly that through the harness.
     "known": [(8, "spread-1")],

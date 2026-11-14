@@ -129,6 +129,11 @@ SETTINGS = {
     "guard_pace": False,  # count on fewer when the week wins orders at a slower pace: small weeks have the lowest on-time shares (120 weeks: 95.0% under 330 orders, 97.0% over 380)
     "guard_loss": 0.25,  # the share of a day's cars that a day with few drivers makes late
     "guard_loss_after": 0.1,  # ... once the week's day with few drivers has come
+    "guard_calm": [0.15, 26],  # [the share of a day's cars that a day with few drivers makes late in a calm week, the cars without a driver at midnight from which a week is not calm]: every week that a smaller reserve hurt had 28 or more cars waiting at some midnight before its bad day; 0.0: one reserve for every week
+    # The reserve was the same for every day, and it cost the most where it protected nothing: of the 235 requests a week that the desk declines, 37 are over the day's limit,
+    # good cars (a driver in time for 88 in 100, 26 euros of expected profit each), and most are Friday's requests for cars due on Monday. In one week in five no night of drops
+    # comes at all, and there the limit turned 71 to 113 options a week away.
+    "guard_loss_later": 0.1,  # ... of the cars due after the weekend, whatever the week has seen: they have the weekend to find a driver. On 40 revealed weeks 3% of them are late, 11% in the worst week, with or without a night of drops on that Monday; 0.0: as any other day
     # The week's two unannounced events, a price war day and an outage day in one region, as cases that each answer weighs (desk/market.py).
     # On 80 weeks with random prices: the next answer foretold 3.1% better than with the week's parts alone. In play, on 80 fresh weeks: 7 a week
     # less (standard error 99), 4 orders fewer (qv-ev). Off: the wide belief of each morning already follows a war within a few answers.
@@ -182,6 +187,7 @@ class Desk:
         self.short_days: set[int] = set()  # the days when drivers stay at home
         self.drop_days: set[int] = set()  # those of them that began with a night of dropped bookings: the week's one such day, which the guard waits for
         self.mornings: set[int] = set()  # the days whose morning backlog has been looked at
+        self.nights: dict[int, int] = {}  # day -> our cars without a driver at its midnight
         self.raised: set[str] = set()  # gigs that already got the short day's fees
         self.alone: set[str] = set()  # orders that go in a gig of their own from now on: their pair found no driver in time
         self.dropped: set[str] = set()  # gigs that a driver gave back since the last look
@@ -269,6 +275,9 @@ class Desk:
             for line in journal.read_text(encoding="utf-8").splitlines() if journal.exists() else ():
                 try:
                     entry = json.loads(line)
+                    if "night" in entry:
+                        self.nights[int(entry["night"])] = int(entry["waiting"])
+                        continue
                     self.asked[entry["request"]] = tuple(entry["asked"])
                     self.plans[entry["request"]] = {kind: Plan(fee, 0.95, 0.0, 0) for kind, fee in entry["fees"].items()}
                 except (ValueError, KeyError, TypeError):
@@ -312,6 +321,7 @@ class Desk:
         """The actions for this minute. Their results go to `results` before the next events. With `quotes_only`
         the desk only answers the requests that wait: in the final a quote does not wait for the next look."""
         self.now = now
+        self.note_night()
         if quotes_only:
             self.quote_requests()
         else:
@@ -386,7 +396,7 @@ class Desk:
     def quote_requests(self) -> None:
         self.off_app = {order["id"] for order in self.books.waiting() if self.waits_for_partner(order)} if self.set["pair_hold"][0] else set()
         full = self.load() >= self.set["max_waiting"] or self.urgent() >= self.set["max_urgent"]
-        self.due_now, self.limit_now, self.limit_early = self.due(), self.day_limit(), self.day_limit(early=True)
+        self.due_now, self.limit_now, self.limit_early, self.limit_later = self.due(), self.day_limit(), self.day_limit(early=True), self.day_limit(later=True)
         # The week has on-time share to spare when few of its cars are late or at risk: only then it takes the riskier long lanes.
         self.spare_now = (self.books.late_count + self.urgent()) / max(self.books.won_count, self.set["guard_orders"] * self.week_left() / 2) < self.set["spare"]
         self.pairable = [order for order in self.books.orders.values() if self.can_pair(order)] if self.books.unquoted else []
@@ -432,7 +442,7 @@ class Desk:
             if plan is None:
                 self.tally["options without a driver in time"] += 1
                 continue
-            limit = self.limit_early if plan.until // DAY <= self.set["guard_early"][1] else self.limit_now
+            limit = self.limit_later if plan.until // DAY > 4 else self.limit_early if plan.until // DAY <= self.set["guard_early"][1] else self.limit_now
             safe = min(self.set["guard_safe"], self.set["guard_spent_safe"]) if limit <= 0 else self.set["guard_safe"]  # a limit of zero or less: the allowance is spent
             if self.due_now[plan.until // DAY] + 1 > limit and plan.chance < safe:
                 self.tally["options over the day's limit"] += 1
@@ -568,9 +578,9 @@ class Desk:
                 days[next(iter(plans.values())).until // DAY] += 0.6
         return days
 
-    def day_limit(self, early: bool = False) -> float:
+    def day_limit(self, early: bool = False, later: bool = False) -> float:
         """The most cars that may be due on one day: if that day turns out to have few drivers, the week still keeps its on-time share.
-        With `early`, the limit for a day early in the week."""
+        With `early`, the limit for a day early in the week; with `later`, for a day after the weekend."""
         seen = any(day >= self.now // DAY - 6 for day in self.drop_days)  # a morning with many cars waiting does not count: the night of drops may still come
         orders = self.set["guard_orders"] * self.week_left()
         if self.set["guard_pace"] and self.week_share() >= 0.2:  # from Monday evening on, the week's own pace says how many orders it will have
@@ -579,7 +589,25 @@ class Desk:
             orders = max(orders, self.books.won_count / self.week_share())
         target = self.set["guard_early"][0] if early and self.set["guard_early"][0] else self.set["guard_on_time"]
         allowed_late = (1 - target) * max(self.books.won_count, orders) - self.books.late_count - self.urgent()
-        return allowed_late / (self.set["guard_loss_after"] if seen else self.set["guard_loss"])
+        loss = self.set["guard_loss_after"] if seen else self.set["guard_calm"][0] if self.set["guard_calm"][0] and self.calm() else self.set["guard_loss"]
+        if later and self.set["guard_loss_later"]:
+            loss = min(loss, self.set["guard_loss_later"])
+        return allowed_late / loss
+
+    def note_night(self) -> None:
+        """Writes down our cars without a driver at each midnight. The live desk also writes it to its journal: a desk that starts again reads it there."""
+        day = self.now // DAY
+        if day not in self.nights and self.now % DAY < HOUR:
+            self.nights[day] = len(self.books.waiting())
+            if self.journal:
+                self.journal.write(json.dumps({"night": day, "waiting": self.nights[day]}) + "\n")
+
+    def calm(self) -> bool:
+        """Drivers are not scarce this week, as far as it shows: at every midnight since Monday few of our cars had no driver.
+        Not on Monday, which has no midnight behind it, and not when a midnight is missing: after a late join, or a restart without its journal."""
+        day = self.now // DAY
+        monday = day - day % 7
+        return day > monday and all(self.nights.get(night, 10 ** 6) < self.set["guard_calm"][1] for night in range(monday + 1, day + 1))
 
     def week_left(self) -> float:
         """The share of the week's five request days that the desk plays: all of them, unless it joined late and counts its days from the join."""
