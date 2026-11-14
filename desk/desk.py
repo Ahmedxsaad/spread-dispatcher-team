@@ -36,6 +36,7 @@ SETTINGS = {
     "late_cost": 0.6,  # what a late car costs us beyond its fee, as a share of its list price: the refund, and the dealer's goodwill
     "trust_value": 0.0,  # how much of a trust point's worth lowers our price, to win the order and its point. Measured: pricing low to buy trust loses (u-gain0, t-trust2)
     "trust_rescue": False,  # retry a completely unprofitable menu with dealer goodwill at the time a missed deadline can affect it
+    "trust_after_close": False,  # retry an otherwise declined menu only for options due after the last dealer requests
     "trust_late": 1.0,  # how much of the trust that a late car loses counts in its cost
     "win_share": 0.4,  # the share of a dealer's later requests that we expect to win
     "min_profit": 200,  # cents: no price for an option that is expected to make less
@@ -476,7 +477,7 @@ class Desk:
             fast = next(iter(prices))
             prices[fast] = euros(prices[fast] * self.set["fast_factor"])
         if not prices:
-            if self.set["trust_rescue"] and not delivery_horizon and trust >= 2:
+            if (self.set["trust_rescue"] or self.set["trust_after_close"]) and not delivery_horizon and trust >= 2:
                 return self.prices(request, full, delivery_horizon=True)
             self.tally["declined: no option worth a price"] += 1
             return decline
@@ -499,17 +500,22 @@ class Desk:
         ready = max(leg["pickup"]["window"]["from"], facts.ready_at or 0)
         if ready // DAY > leg["pickup"]["window"]["from"] // DAY:  # a car that is ready a day or more later moves its deadline by the same days
             deadline += (ready // DAY - leg["pickup"]["window"]["from"] // DAY) * DAY
-        until = self.last_pickup({"legs": [leg] + request["legs"][1:], "deliveredAt": [None] * len(request["legs"])}, min(deadline, facts.deliver_by or deadline))
+        deadline = min(deadline, facts.deliver_by or deadline)
+        if delivery_horizon and self.set["trust_after_close"] and deadline <= LAST_REQUEST:
+            return None
+        until = self.last_pickup({"legs": [leg] + request["legs"][1:], "deliveredAt": [None] * len(request["legs"])}, deadline)
         if until - max(post_at, ready) < HOUR:
             return None
         if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
             return None  # few drivers work today: no new car that needs one today
-        return self.best_fee(leg, request["referenceFeeCents"], post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"], min(deadline, facts.deliver_by or deadline) if delivery_horizon else None))
+        return self.best_fee(leg, request["referenceFeeCents"], post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"], deadline if delivery_horizon else None))
 
     def plan_trade_in(self, request: dict, option: dict, post_at: int, delivery_horizon: bool = False) -> Optional[Plan]:
         """A trade-in goes as one gig at one fee: the new car to the customer inside the booked hour,
         then the old car back in the same visit. None when the two drives pass the 12 hours of a
         gig with two cars, or when a driver is unlikely to take it in time."""
+        if delivery_horizon and self.set["trust_after_close"] and option["deadline"] <= LAST_REQUEST:
+            return None
         legs = request["legs"]
         trip = {"legs": legs, "deliveredAt": [None, None]}
         drive = self.drive(trip, [0, 1])
