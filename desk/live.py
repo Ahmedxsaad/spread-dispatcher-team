@@ -45,9 +45,9 @@ def play_live(world: World, level: int, config: Optional[dict] = None, journal_f
 
 def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
     """Reads the world's events as they come. The desk looks at its books in the rhythm of its practice weeks: at once
-    after an event that cannot wait, and else every `tick` minutes of the world. A car that waits a few minutes for the
-    next look can still go in a pair with a car that we win just after it: with a look every 3 minutes, the same 40
-    practice weeks make 335 a week less (qt-3). A quote never waits past `QUOTE_BY` minutes before its deadline."""
+    after an event that cannot wait, and else every `tick` minutes of the world. Every setting was measured at that
+    rhythm, so the final plays at it. On 80 fresh weeks a look every 10 minutes makes 127 a week less than every 12,
+    with a standard error of 138 (qt-10). A quote never waits past `QUOTE_BY` minutes before its deadline."""
     looked, day = 0.0, desk.now // DAY
     due, urgent = desk.now, True  # the first look comes at once
     for event in world.stream(after=desk.last_seq, idle=LOOK_EVERY):

@@ -35,6 +35,8 @@ A gain of a few hundred euros a week does not show on 40 weeks: there the standa
 
 `v17` makes €314 a week more than `v16` (standard error €105), and `v18` €233 more than `v17` (standard error €99). Together: €546 (standard error €125), better on 80 of the 120 weeks. All 120 weeks are ranked.
 
+The 40 weeks that the settings were tuned on flatter them. `v18` makes €17,599 a week on those 40 and €17,084 on the 80 new ones, at 97.1% on time. The second number is the one to expect. The rhythm test under Robustness shows the same thing from another side: on the tuned weeks, any change of rhythm looks like a loss.
+
 Ranking rounds at level 8, five secret weeks each:
 
 | Round | Version | Five weeks | On time |
@@ -44,6 +46,8 @@ Ranking rounds at level 8, five secret weeks each:
 | Saturday 12:00 | `v17` | €99,211 | 97.8% |
 
 In the Saturday 09:00 round this was the second highest total of the 68 teams that played it. The highest was €79,003. In the Saturday 12:00 round it was the highest of the 34 teams that had finished when we played, at 12:34. The second was €98,990.
+
+The same code, not tuned for them, also played the Saturday 12:00 round at levels 2 to 7, and every week is ranked: first of 19 at level 7 (€54,251), third of 8 at level 5, fourth at levels 2, 3 and 4, and 13th of 18 at level 6. Level 1 was not played: there the desk is at 89% on time in practice.
 
 ## How it decides
 
@@ -140,4 +144,4 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 - The desk rebuilds its books from the world's event history and its own list of orders and gigs. With lost requests and lost answers injected into every kind of call, four weeks scored the same as without (`flaky` tests).
 - A full rehearsal of the live loop from Thursday 00:00 to the world's end, at three times the final's pace and with two restarts, made €5,783 at 96.9% on time. The same half-week in practice mode made €5,622 at 95.0%.
 - One look at the books takes 40 ms on average and 0.33 s at worst. A request waits 4.5 s.
-- The live loop keeps the rhythm of the practice weeks: a look at once after an event that cannot wait, and else every 12 minutes of the world. The rhythm is part of the system: a car that waits a few minutes for the next look can still pair with a car that we win just after it. With a look every 3 minutes, the same 40 practice weeks make €335 a week less (`qt-3`, standard error €125). A quote never waits past 6 world minutes before its deadline.
+- The live loop keeps the rhythm of the practice weeks: a look at once after an event that cannot wait, and else every 12 minutes of the world. Every measurement here was made at that rhythm, so the final plays at it too. A quote never waits past 6 world minutes before its deadline. How much the rhythm itself is worth is not settled: on the 40 weeks that the settings were tuned on, a look every 3, 9 or 10 minutes makes €200 to €400 a week less, but on 80 fresh weeks a look every 10 minutes makes €127 less with a standard error of €138 (`qt-3`, `qt-9`, `qt-10`).
