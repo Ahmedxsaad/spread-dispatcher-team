@@ -50,6 +50,7 @@ SETTINGS = {
     "greed_later": 0.0,  # the factor for a car due after the weekend: the driver curve says 88 in 100 of them get a driver in time, and 97 in 100 do, so their cost is put too high; 0.0: as any other car
     "greed": 1.06,  # a factor on the price that the models choose. Dealers react less to our price than the fitted curve says: 1.00 makes 14,027 a week, 1.06 14,785, 1.12 13,895 (g-*)
     "decline": 3.0,  # a price that no dealer takes, over the list price: a quote that loses costs nothing
+    "before_weekend_waiting_cap": False,  # on Friday, omit cars that can still be picked up next Monday from the waiting limit
     "max_waiting": 60,  # stop winning while this many orders have no driver
     "max_urgent": 20,  # ... or while this many of them are on the ladder: the last pickup is near
     "explore_fees": [0.5, 0.6, 0.7, 0.85, 1.0, 1.2, 1.4, 1.7, 2.0],
@@ -401,7 +402,17 @@ class Desk:
 
     def quote_requests(self) -> None:
         self.off_app = {order["id"] for order in self.books.waiting() if self.waits_for_partner(order)} if self.set["pair_hold"][0] else set()
-        full = self.load() >= self.set["max_waiting"] or self.urgent() >= self.set["max_urgent"]
+        waiting = self.load()
+        if self.set["before_weekend_waiting_cap"] and self.now // DAY == 4 and waiting >= self.set["max_waiting"]:
+            # The half-order charge for each unanswered quote stays in the total. The driver fee
+            # and delivery-risk models also keep using the full load, including Monday's cars.
+            for order in self.books.waiting():
+                if order["id"] in self.off_app or order["lastPickupAt"] < 7 * DAY:
+                    continue
+                stage, until = self.stage(order)
+                if stage == 0 and until >= 7 * DAY:
+                    waiting -= 1
+        full = waiting >= self.set["max_waiting"] or self.urgent() >= self.set["max_urgent"]
         self.due_now, self.limit_now, self.limit_early, self.limit_later = self.due(), self.day_limit(), self.day_limit(early=True), self.day_limit(later=True)
         # The week has on-time share to spare when few of its cars are late or at risk: only then it takes the riskier long lanes.
         self.spare_now = (self.books.late_count + self.urgent()) / max(self.books.won_count, self.set["guard_orders"] * self.week_left() / 2) < self.set["spare"]
