@@ -114,6 +114,8 @@ SETTINGS = {
     # A day when drivers stay at home (flu, snow): they give their bookings back just after midnight. Seen in every week of level 7 and 8.
     "short_day_drops": 6,  # this many drops before 02:00 mark the day
     "short_day_steps": [[360, 1.15], [480, 1.35], [600, 1.6]],  # [minute of that day, fee]: the cars due that day go up early, while drivers still plan their day. Steeper steps cost more and gain nothing (sd-*)
+    "short_day_chance": 0.0,  # on a day that began with a night of drops, still price a car that needs a pickup that day when its chance of a driver in time is at least this; 0.0: none of them
+    "short_day_cost": False,  # ... and count such a car at the fee that it will open at: on such a day the cars due that day open at the day's early fee steps, up to 1.6 of the typical fee, where the plan assumed its own opening fee
     "short_day_quotes": False,  # on such a day, still price the options that need a pickup today
     # The guard of the delivery minimum: on the day when drivers stay at home, up to a quarter of the cars due that day are late.
     # So we never hold more cars due on one day than the week can afford to lose a quarter of.
@@ -502,9 +504,19 @@ class Desk:
         until = self.last_pickup({"legs": [leg] + request["legs"][1:], "deliveredAt": [None] * len(request["legs"])}, min(deadline, facts.deliver_by or deadline))
         if until - max(post_at, ready) < HOUR:
             return None
-        if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
+        short = until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days)
+        if short and not self.set["short_day_chance"]:
             return None  # few drivers work today: no new car that needs one today
-        return self.best_fee(leg, request["referenceFeeCents"], post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"]))
+        late = self.late_cost(request["dealerId"], option["listPriceCents"])
+        plan = self.best_fee(leg, request["referenceFeeCents"], post_at, until, late)
+        if plan is not None and short and plan.chance < self.set["short_day_chance"]:
+            return None  # only the surest cars
+        if plan is not None and self.set["short_day_cost"] and until // DAY in self.short_days:
+            step = max([ratio for minute, ratio in self.set["short_day_steps"] if post_at >= until // DAY * DAY + minute] + [0.0])
+            if step > plan.fee:  # the gig opens at the day's step, not at the plan's fee
+                paid = request["referenceFeeCents"] * step
+                plan = plan._replace(paid=paid, cost=paid + (1 - plan.chance) * late)
+        return plan
 
     def plan_trade_in(self, request: dict, option: dict, post_at: int) -> Optional[Plan]:
         """A trade-in goes as one gig at one fee: the new car to the customer inside the booked hour,
