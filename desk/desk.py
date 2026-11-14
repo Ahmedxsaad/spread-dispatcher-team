@@ -595,9 +595,10 @@ class Desk:
         return allowed_late / loss
 
     def note_night(self) -> None:
-        """Writes down our cars without a driver at each midnight. The live desk also writes it to its journal: a desk that starts again reads it there."""
+        """Writes down our cars without a driver at each midnight. The live desk also writes it to its journal: a desk that starts again reads it there.
+        A first look that comes later in the night still counts: no driver reads the app before 07:00, so the count stands still."""
         day = self.now // DAY
-        if day not in self.nights and self.now % DAY < HOUR:
+        if day not in self.nights and self.now % DAY < 6 * HOUR:
             self.nights[day] = len(self.books.waiting())
             if self.journal:
                 self.journal.write(json.dumps({"night": day, "waiting": self.nights[day]}) + "\n")
