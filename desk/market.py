@@ -63,12 +63,14 @@ class Market:
     def shape_of(self, request: dict) -> tuple[float, float]:
         """How much steeper than the one fitted slope this request's dealer answers price, and the level that goes with it.
         Dealers are most sensitive on Monday (slope 14.5 where the week has 12.4) and least when the first option that
-        they ask for is a late one (9.3) or the car is cheap to move."""
-        if self.shaped[0] != request["id"]:
-            first = request["options"][0]
+        is a late one (9.3) or the car is cheap to move. The desk can select the first option
+        it actually offers. Without that context the first requested option defines the features."""
+        first = request.get("first_offered_option", request["options"][0])
+        key = (request["id"], first["kind"], first["listPriceCents"])
+        if self.shaped[0] != key:
             parts = [name for name, there in (("monday", request["arrivedAt"] // DAY % 7 == 0), ("tuesday", request["arrivedAt"] // DAY % 7 == 1), ("next_day_first", first["kind"] == "next_day"),
                                                 ("later_first", first["kind"] == "within_3_days"), ("small", first["listPriceCents"] <= 3000)) if there]
-            self.shaped = (request["id"], self.shape["everywhere"] + sum(self.shape["slope"][name] for name in parts), sum(self.shape["level"][name] for name in parts))
+            self.shaped = (key, self.shape["everywhere"] + sum(self.shape["slope"][name] for name in parts), sum(self.shape["level"][name] for name in parts))
         return self.shaped[1], self.shaped[2]
 
     def in_outage(self, request: dict, at: int) -> float:

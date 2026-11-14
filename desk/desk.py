@@ -146,6 +146,7 @@ SETTINGS = {
     "calm_sd": 0.7,  # how far a calm day's level lies from the day before, in the curve's units, when the events are cases of their own
     "regimes": False,  # hold two beliefs about the day's level each morning: an ordinary day near the week's level, and a price war day
     "dealer_shape": False,  # a dealer curve whose slope depends on the request: steeper on Monday and Tuesday, flatter when the first option asked for is a late one or the car is cheap to move (desk/fitted.json, dealer_shape)
+    "dealer_shape_first_offered": False,  # use the shaped curve with the first option we offer and its list price
     "slope_scale": 1.0,  # a factor on the fitted slope of the dealer curve
     "dealer_sd": 0.0,  # how far a dealer's own level may lie from the day's, in the curve's units; 0: one level for all dealers. No gain, also with the week's parts below (d-sd*, qd-03)
     # This week's own parts of the competitor's prices, learned like the day's level: [how far the part lies from zero, in the curve's units, and the share of it that holds overnight].
@@ -205,7 +206,7 @@ class Desk:
         self.pairable: list[dict] = []  # during one look: the waiting orders that can go in a pair
         kind, more = (RegimeMarket, {}) if self.set["regimes"] else (EventMarket, {"calm_sd": self.set["calm_sd"]}) if self.set["events"] else (Market, {})
         self.market = kind(level, **more, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"],
-                                                                           minutes=self.minutes, tilt=tuple(self.set["tilt"]), places=tuple(self.set["places"]), shape=self.set["dealer_shape"])
+                                                                           minutes=self.minutes, tilt=tuple(self.set["tilt"]), places=tuple(self.set["places"]), shape=self.set["dealer_shape"] or self.set["dealer_shape_first_offered"])
         self.tally: Counter = Counter()  # what the desk did with each request, for the day's report
         if self.set["explore"]:
             self.set["max_waiting"], self.set["max_urgent"] = self.set["explore_caps"][len(roster) % len(self.set["explore_caps"])], 10 ** 6
@@ -284,6 +285,10 @@ class Desk:
                     entry = json.loads(line)
                     if "night" in entry:
                         self.nights[int(entry["night"])] = int(entry["waiting"])
+                        continue
+                    if entry.get("forget_quote"):
+                        self.asked.pop(entry["request"], None)
+                        self.plans.pop(entry["request"], None)
                         continue
                     self.asked[entry["request"]] = tuple(entry["asked"])
                     self.plans[entry["request"]] = {kind: Plan(fee, 0.95, 0.0, 0) for kind, fee in entry["fees"].items()}
@@ -436,8 +441,10 @@ class Desk:
         no_trade_in = len(request["legs"]) > 1 and (not self.set["trade_ins"] or self.noted(facts) or facts.ready_at is not None)
         if full or no_trade_in or facts.unsure or facts.summer_tyres:
             self.tally["declined: too many orders without a driver" if full else "declined: trade-in" if no_trade_in else "declined: the note"] += 1
+            self.forget_replaced_offer(request["id"])
             return decline
         if self.set["explore"]:
+            self.forget_replaced_offer(request["id"])
             rng = random.Random(f"{self.set['seed']}:{request['id']}")
             markup, mode = rng.uniform(1.0, 2.0), rng.random()
             offered = options if mode < 0.5 else options[:1] if mode < 0.75 else options[-1:]
@@ -461,7 +468,8 @@ class Desk:
             if self.set["pairs"] and self.set["pair_share"] and self.level >= 4 and len(request["legs"]) == 1:
                 plan = plan._replace(cost=plan.cost - self.set["pair_share"] * self.pair_share(request) * PAIRS["saving"] * plan.paid)
             only_later = options[0]["kind"] not in prices and option is not options[0]
-            chance = self.market.price_curve(request, trust, only_later, request["respondBy"])
+            market_request = self.offer_context(request, prices, option)
+            chance = self.market.price_curve(market_request, trust, only_later, request["respondBy"])
             profit, markup = max((chance(m) * (m * option["listPriceCents"] - plan.cost + plan.chance * gain), m) for m in MARKUPS)
             if profit >= self.set["min_profit"]:
                 drive = self.minutes[(request["legs"][0]["pickup"]["placeId"], request["legs"][0]["delivery"]["placeId"])]
@@ -480,6 +488,7 @@ class Desk:
             prices[fast] = euros(prices[fast] * self.set["fast_factor"])
         if not prices:
             self.tally["declined: no option worth a price"] += 1
+            self.forget_replaced_offer(request["id"])
             return decline
         self.tally["quoted"] += 1
         self.plans[request["id"]] = plans
@@ -661,6 +670,22 @@ class Desk:
         """The dealer's orders that we hold and have not delivered yet."""
         return sum(1 for order in self.books.orders.values() if order["dealerId"] == dealer)
 
+    def forget_replaced_offer(self, request_id: str) -> None:
+        """A decline or exploration quote replaces an earlier priced offer after a live rejoin."""
+        if self.set["dealer_shape_first_offered"] and self.asked.pop(request_id, None) is not None:
+            self.plans.pop(request_id, None)
+            if self.journal:
+                self.journal.write(json.dumps({"request": request_id, "forget_quote": True}) + "\n")
+
+    def offer_context(self, request: dict, offered: dict, candidate: Optional[dict] = None) -> dict:
+        """Give the dealer curve the first offered option, in the dealer's original order.
+        While pricing, the current candidate can be the first. For an outcome, the same offer
+        set comes from its saved plans, including the fee keys in journals from earlier desks."""
+        if not self.set["dealer_shape_first_offered"]:
+            return request
+        first = next((option for option in request["options"] if option["kind"] in offered), candidate)
+        return {**request, "first_offered_option": first} if first is not None else request
+
     def learn(self, request_id: str, order: Optional[dict], at: int) -> None:
         """Tells the market model what the dealer did with our quote."""
         asked, request = self.asked.pop(request_id, None), self.books.requests.get(request_id)
@@ -670,7 +695,8 @@ class Desk:
         if order is not None:  # the dealer took this option at this price
             lists = {option["kind"]: option["listPriceCents"] for option in request["options"]}
             markup = order["priceCents"] / lists[order["option"]]
-        self.market.learn(request, markup, trust, only_later, order is not None, at // DAY, at)
+        market_request = self.offer_context(request, self.plans.get(request_id, {}))
+        self.market.learn(market_request, markup, trust, only_later, order is not None, at // DAY, at)
 
     # --- gigs ---
 
