@@ -38,6 +38,7 @@ SETTINGS = {
     "trust_late": 1.0,  # how much of the trust that a late car loses counts in its cost
     "win_share": 0.4,  # the share of a dealer's later requests that we expect to win
     "min_profit": 200,  # cents: no price for an option that is expected to make less
+    "first_only_small_spread": False,  # keep only the fastest on low-markup requests with under seven euros between the option list prices at that markup
     "fast_factor": 1.0,  # a factor on the price of the fastest option when we also offer a later one: later options leave us more per car
     "drop_bump": 1.0,  # after a driver gives a gig back, its fee starts again at the fee that was booked times this
     "greed_short": [0, 1.06],  # [drive minutes, factor]: lanes up to this length have their own factor
@@ -471,6 +472,14 @@ class Desk:
                 markup *= factor
                 prices[option["kind"]], plans[option["kind"]] = euros(markup * option["listPriceCents"]), plan
                 markups.append(markup)
+        if self.level == 8 and self.set["first_only_small_spread"] and len(prices) > 1 and options[0]["kind"] in prices:
+            fast = options[0]
+            actual_markup = prices[fast["kind"]] / fast["listPriceCents"]
+            list_gap = fast["listPriceCents"] - options[-1]["listPriceCents"]
+            if actual_markup < 1.30 and actual_markup * list_gap < 700:
+                prices = {fast["kind"]: prices[fast["kind"]]}
+                plans = {fast["kind"]: plans[fast["kind"]]}
+                markups = [markups[0]]
         if len(prices) > 1 and self.set["fast_factor"] != 1.0:  # steer the dealer to a later option
             fast = next(iter(prices))
             prices[fast] = euros(prices[fast] * self.set["fast_factor"])
