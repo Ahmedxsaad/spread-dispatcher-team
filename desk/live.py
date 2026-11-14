@@ -14,7 +14,8 @@ from spread.client import SpreadError, Unreachable, World
 from .clock import DAY, clock
 from .desk import Desk
 
-LOOK_EVERY = 0.4  # real seconds between two looks at the books while events keep coming
+LOOK_EVERY = 0.4  # real seconds between two checks of the clock while events keep coming
+QUOTE_BY = 6  # world minutes before a request's deadline at which its quote goes out whatever the rhythm: 1.8 real seconds
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -43,15 +44,23 @@ def play_live(world: World, level: int, config: Optional[dict] = None, journal_f
 
 
 def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
+    """Reads the world's events as they come. The desk looks at its books in the rhythm of its practice weeks: at once
+    after an event that cannot wait, and else every `tick` minutes of the world. A car that waits a few minutes for the
+    next look can still go in a pair with a car that we win just after it: with a look every 3 minutes, the same 40
+    practice weeks make 335 a week less (qt-3). A quote never waits past `QUOTE_BY` minutes before its deadline."""
     looked, day = 0.0, desk.now // DAY
+    due, urgent = desk.now, True  # the first look comes at once
     for event in world.stream(after=desk.last_seq, idle=LOOK_EVERY):
         if event is not None:
             safely(desk.on_event, event)
+            urgent = urgent or event["kind"] in desk.wake_on(desk.now)
         elif desk.now < desk.ends_at:
             desk.now = max(desk.now, safely(world_minute) or desk.now)
         if event is None or time.monotonic() - looked >= LOOK_EVERY:
-            look(world, desk)
             looked = time.monotonic()
+            if urgent or desk.now >= due or desk.quote_due(desk.now, QUOTE_BY):
+                look(world, desk)
+                due, urgent = min(desk.next_look(desk.now), (desk.now // DAY + 1) * DAY), False
             if desk.now // DAY > day:
                 report(world, desk, day)
                 day = desk.now // DAY

@@ -78,8 +78,13 @@ SETTINGS = {
     # The cars that book most easily can open lower still. In 80 weeks with random opening fees, the cars of which 94 in 100 book
     # at 0.85 cost 0.85 of the typical fee in the end when they opened at 0.70, against 0.93 when they opened at 0.85. For the
     # other cars a lower opening fee saves nothing and makes more of them late.
-    # In play, on 120 weeks: 233 a week more (standard error 99), and more cars on time, because the desk then wins more of these cars (qe-94). From 0.97 on: no gain (qe-97)
+    # In play, on 120 weeks: 233 a week more (standard error 99), and more cars on time, because the desk then wins more of these cars (qe-94).
+    # Other gates on 80 weeks: 0.97 no gain, 0.90 only 59 more with one week at 89.3% on time, 0.85 111 less (qe-97, qe-90, qe-85)
     "easy": [0.94, 0.72],  # [the share of such cars that book at the lowest opening fee, from which a car may open lower; that lower fee]; 1.0: never
+    # The cars that book least easily open higher. In the same 80 weeks, the cars of which fewer than 75 in 100 book at 0.85 found a driver
+    # in time 77 times in 100 when they opened at 0.85 and 87 times when they opened at 1.00, and cost 1.09 and 1.13 of the typical fee in the end.
+    # In play, with our raises before the last hours: 292 a week less and no more cars on time (qh-75). Off.
+    "hard": [0.0, 1.0],  # [the share of such cars that book at the lowest opening fee, below which a car opens higher; the lowest fee for such a car]; 0.0: never
     "rise": [[0.25, 1.15], [0.6, 1.3]],  # raises before the ladder: [share of the time until the ladder, fee over the opening fee]. On 40 weeks: 450 a week more, and more cars on time (y-rise)
     "judge_at": 1.0,  # the fee, over the opening fee, at which we judge the chance of a driver in time
     "driver_towns": False,  # the driver curves count each town's own effect, beyond the drivers who live near it. Measured on 120 weeks: no gain (t-towns)
@@ -104,7 +109,7 @@ SETTINGS = {
     "guard_loss_after": 0.1,  # ... once the week's day with few drivers has come
     "regimes": False,  # hold two beliefs about the day's level each morning: an ordinary day near the week's level, and a price war day
     "slope_scale": 1.0,  # a factor on the fitted slope of the dealer curve
-    "dealer_sd": 0.0,  # how far a dealer's own level may lie from the day's, in the curve's units; 0: one level for all dealers
+    "dealer_sd": 0.0,  # how far a dealer's own level may lie from the day's, in the curve's units; 0: one level for all dealers. No gain, also with the week's parts below (d-sd*, qd-03)
     # This week's own parts of the competitor's prices, learned like the day's level: [how far the part lies from zero, in the curve's units, and the share of it that holds overnight].
     # On 80 weeks with random prices they predict the next answer 3.9% better. In play, on 120 weeks: 314 a week more than without them (standard error 105), and 0.8 fewer late cars a week (q-both)
     "tilt": [0.5, 0.7],  # by the lane's length: once a week the competitor's price list changes shape. 0: no tilt
@@ -312,6 +317,10 @@ class Desk:
             waits.append(now + 30)  # an offer is open for 10 minutes: look again soon, for the next viewers
         return min([now + 3 * HOUR] + waits)
 
+    def quote_due(self, now: int, minutes: int) -> bool:
+        """A request waits for our quote and its dealer decides within `minutes`: the quote cannot wait for the next look."""
+        return any(self.books.requests[request_id]["respondBy"] - now <= minutes for request_id in self.books.unquoted if request_id in self.books.requests)
+
     def wake_on(self, now: int) -> list[str]:
         """The events that cannot wait for the next look. At night, a price request is one."""
         asleep = now < LAST_REQUEST + 15 and not AWAKE[0] <= now % DAY < AWAKE[1]
@@ -465,6 +474,11 @@ class Desk:
                                   self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY, self.load())
             if logistic(FITTED["booked_at_opening"], lowest) >= self.set["easy"][0]:
                 fees = [self.set["easy"][1]] + fees
+        if self.set["hard"][0] > 0:
+            lowest = gig_features(awake_between(post_at, until) / 60, self.minutes[(pickup["placeId"], delivery["placeId"])] / 60, self.set["fees"][0], self.near[pickup["placeId"]],
+                                  self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY, self.load())
+            if logistic(FITTED["booked_at_opening"], lowest) < self.set["hard"][0]:
+                fees = [fee for fee in fees if fee >= self.set["hard"][1]]
         for fee in fees:
             x = gig_features(awake_between(post_at, until) / 60, self.minutes[(pickup["placeId"], delivery["placeId"])] / 60, fee, self.near[pickup["placeId"]],
                              self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY, self.load())

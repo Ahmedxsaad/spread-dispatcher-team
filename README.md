@@ -92,7 +92,9 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
 - A driver level learned during the week, as the dealers' level is: it predicts the next gigs worse than the fixed curve, because a quick booking is known at once and a gig without a driver only hours later.
 - A lower or a higher price factor with the new learner: €321 and €489 a week less (`qg-103`, `qg-109`).
 - A guard that counts on fewer orders when the week wins them at a slow pace: it changed 5 of 80 weeks and did not lift the lowest ones (`qp-pace`).
-- The lower opening fee for the very easiest cars alone, from 97 in 100: no gain (`qe-97`).
+- A higher opening fee, 1.00, for the cars that book least easily. The randomised weeks, which had no fee raises before the last hours, said it would get more of them a driver in time. With our two raises it does not: €292 a week less, on time unchanged (`qh-75`).
+- A level for each dealer in the new learner: no gain, as before (`qd-03`).
+- The lower opening fee for other shares than 94 in 100. From 97 in 100: no gain. From 90 in 100: €59 a week, and one of 79 weeks falls to 89.3% on time. From 85 in 100: €111 a week less (`qe-97`, `qe-90`, `qe-85`). The randomised weeks say the same: below 94 in 100 a lower opening fee saves nothing.
 
 ## What would break it
 
@@ -138,3 +140,4 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 - The desk rebuilds its books from the world's event history and its own list of orders and gigs. With lost requests and lost answers injected into every kind of call, four weeks scored the same as without (`flaky` tests).
 - A full rehearsal of the live loop from Thursday 00:00 to the world's end, at three times the final's pace and with two restarts, made €5,783 at 96.9% on time. The same half-week in practice mode made €5,622 at 95.0%.
 - One look at the books takes 40 ms on average and 0.33 s at worst. A request waits 4.5 s.
+- The live loop keeps the rhythm of the practice weeks: a look at once after an event that cannot wait, and else every 12 minutes of the world. The rhythm is part of the system: a car that waits a few minutes for the next look can still pair with a car that we win just after it. With a look every 3 minutes, the same 40 practice weeks make €335 a week less (`qt-3`, standard error €125). A quote never waits past 6 world minutes before its deadline.
