@@ -311,8 +311,10 @@ class Desk:
                 continue
             self.now = max(self.now, snapshot["now"])
             stage, until = min((self.stage(books.orders[order_id]) for order_id in {key[0] for key in legs}), key=lambda pair: (-pair[0], pair[1]))
-            gig = books.posted({"type": "post", "stops": listed["stops"], "audience": listed["audience"], "schedule": listed["schedule"]}, listed["id"], listed["postedAt"], until, stage)
-            gig.legs, gig.status, gig.driver, gig.fee = legs, listed["status"], listed["driverId"], listed["feeCents"]
+            # A working gig still lists its original stops. Register only cars it still carries.
+            stops = [stop for stop in listed["stops"] if (stop["orderId"], stop["leg"]) in legs]
+            gig = books.posted({"type": "post", "stops": stops, "audience": listed["audience"], "schedule": listed["schedule"]}, listed["id"], listed["postedAt"], until, stage)
+            gig.status, gig.driver, gig.fee = listed["status"], listed["driverId"], listed["feeCents"]
         # Every open request gets a quote again: a new quote replaces the earlier one.
         for request in snapshot["openRequests"]:
             books.requests.setdefault(request["id"], request)
