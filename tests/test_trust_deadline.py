@@ -44,3 +44,33 @@ class TrustDeadlineTest(unittest.TestCase):
         desk.facts["r"] = notes.Facts(ready_at=DAY, deliver_by=LAST_REQUEST)
         self.assertIsNone(desk.plan(request, option, 0, delivery_horizon=True))
         self.assertIsNone(desk.plan({**request, "legs": [leg, leg]}, option, 0, delivery_horizon=True))
+
+    def test_after_weekend_requires_both_deadline_and_last_pickup(self):
+        desk = object.__new__(Desk)
+        desk.set = {**SETTINGS, "trust_after_weekend": True}
+        desk.facts, desk.short_days = {}, set()
+        desk.best_fee, desk.late_cost = Mock(return_value="plan"), Mock(return_value=500)
+        leg = {"pickup": {"window": {"from": 0}, "hours": None}, "delivery": {"hours": None}}
+        request = {"id": "r", "dealerId": "D", "legs": [leg], "referenceFeeCents": 1000}
+        monday = 7 * DAY
+        for deadline, pickup, expected in [(4 * DAY + 20 * 60, 4 * DAY + 18 * 60, None),
+                                           (5 * DAY + 720, 5 * DAY + 600, None),
+                                           (6 * DAY + 720, 6 * DAY + 600, None),
+                                           (monday + 720, monday - 1, None),
+                                           (monday - 1, monday, None),
+                                           (monday, monday, "plan")]:
+            with self.subTest(deadline=deadline, pickup=pickup):
+                option = {"kind": "next_day", "deadline": deadline, "listPriceCents": 2000}
+                desk.last_pickup = Mock(return_value=pickup)
+                self.assertEqual(desk.plan(request, option, 0, delivery_horizon=True), expected)
+                self.assertEqual(desk.plan(request, option, 0), "plan")
+        desk.last_pickup = Mock(side_effect=lambda trip, deadline: deadline - 60)
+        desk.facts["r"] = notes.Facts(deliver_by=monday-1)
+        nominal_monday = {"kind": "next_day", "deadline": monday+120, "listPriceCents": 2000}
+        self.assertIsNone(desk.plan(request, nominal_monday, 0, delivery_horizon=True))
+        desk.facts["r"] = notes.Facts(ready_at=DAY)
+        shifted = {**nominal_monday, "deadline": 6*DAY+120}
+        self.assertEqual(desk.plan(request, shifted, 0, delivery_horizon=True), "plan")
+        desk.level, desk.drive = 8, Mock(return_value=360)
+        desk.last_pickup = Mock(return_value=monday-1)
+        self.assertIsNone(desk.plan({**request, "legs": [leg, leg]}, nominal_monday, 0, delivery_horizon=True))

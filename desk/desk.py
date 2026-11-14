@@ -37,6 +37,7 @@ SETTINGS = {
     "trust_value": 0.0,  # how much of a trust point's worth lowers our price, to win the order and its point. Measured: pricing low to buy trust loses (u-gain0, t-trust2)
     "trust_rescue": False,  # retry a completely unprofitable menu with dealer goodwill at the time a missed deadline can affect it
     "trust_after_close": False,  # retry an otherwise declined menu only for options due after the last dealer requests
+    "trust_after_weekend": False,  # rescue only options whose effective deadline and last pickup are both on or after next Monday
     "trust_late": 1.0,  # how much of the trust that a late car loses counts in its cost
     "win_share": 0.4,  # the share of a dealer's later requests that we expect to win
     "min_profit": 200,  # cents: no price for an option that is expected to make less
@@ -477,7 +478,7 @@ class Desk:
             fast = next(iter(prices))
             prices[fast] = euros(prices[fast] * self.set["fast_factor"])
         if not prices:
-            if (self.set["trust_rescue"] or self.set["trust_after_close"]) and not delivery_horizon and trust >= 2:
+            if (self.set["trust_rescue"] or self.set["trust_after_close"] or self.set["trust_after_weekend"]) and not delivery_horizon and trust >= 2:
                 return self.prices(request, full, delivery_horizon=True)
             self.tally["declined: no option worth a price"] += 1
             return decline
@@ -504,6 +505,8 @@ class Desk:
         if delivery_horizon and self.set["trust_after_close"] and deadline <= LAST_REQUEST:
             return None
         until = self.last_pickup({"legs": [leg] + request["legs"][1:], "deliveredAt": [None] * len(request["legs"])}, deadline)
+        if delivery_horizon and self.set["trust_after_weekend"] and min(deadline, until) < 7 * DAY:
+            return None
         if until - max(post_at, ready) < HOUR:
             return None
         if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
@@ -522,6 +525,8 @@ class Desk:
         if self.level < 4 or len(legs) != 2 or drive > 12 * HOUR - 20:
             return None
         until = self.last_pickup(trip, option["deadline"])
+        if delivery_horizon and self.set["trust_after_weekend"] and min(option["deadline"], until) < 7 * DAY:
+            return None
         if until - max(post_at, legs[0]["pickup"]["window"]["from"]) < HOUR:
             return None
         if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
