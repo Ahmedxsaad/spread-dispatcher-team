@@ -4,6 +4,7 @@ second. It can stop and start again at any minute: it rebuilds the books from th
 history and its own list of orders and gigs, and from a journal of its quotes on disk."""
 from __future__ import annotations
 
+import http.client
 import socket
 import time
 import traceback
@@ -16,6 +17,8 @@ from .clock import DAY, clock
 from .desk import Desk
 
 LOOK_EVERY = 0.4  # real seconds between two checks of the clock while events keep coming
+QUICK = 4.0  # real seconds that a request in play waits for an answer: a quote that is older is late anyway. The kit waits 20
+JOIN = 20.0  # ... and while the desk joins a world, whose history is a long answer
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -40,6 +43,41 @@ def remember_names() -> None:
     socket.getaddrinfo = getaddrinfo
 
 
+def set_patience(client, seconds: float) -> None:
+    """How long the client waits for an answer. In the Saturday 20:00 test final the hall's network lost three
+    requests in six minutes. The kit waits 20 seconds for each, a world hour, and then the desk joined its world
+    again from nothing: Monday ended with 66 orders, not 110."""
+    if not hasattr(client, "patience"):
+        send = client._send
+
+        def _send(method, path, payload, headers):
+            if client._connection is None:  # the kit would open it with its own 20 seconds
+                kind = http.client.HTTPSConnection if client._parts.scheme == "https" else http.client.HTTPConnection
+                client._connection = kind(client._parts.netloc, timeout=client.patience)
+            elif client._connection.sock is not None:
+                client._connection.sock.settimeout(client.patience)
+            return send(method, path, payload, headers)
+
+        client._send = _send
+    client.patience = seconds
+
+
+def recover(world: World, desk: Desk, error: Exception, tries: int = 3) -> None:
+    """A request got no answer. The desk keeps its books: it reads the events that it missed and the world's own
+    list of our orders and gigs, which says which of its last actions arrived, and goes on. Only when that fails
+    too does it join the world again from nothing."""
+    print(f"{clock(desk.now)} no answer: {str(error)[:90]}. Reading the world again.", flush=True)
+    for attempt in range(tries):
+        try:
+            for event in world.events(after=desk.last_seq):
+                safely(desk.on_event, event)
+            desk.sync(world.snapshot())
+            return
+        except Unreachable:
+            time.sleep(0.5)
+    raise error
+
+
 def play_live(world: World, level: int, config: Optional[dict] = None, journal_folder: str = "results/journal",
               world_minute: Optional[Callable[[], int]] = None) -> None:
     """Plays a world whose clock moves by itself until the world ends. `world_minute` reads the
@@ -47,9 +85,10 @@ def play_live(world: World, level: int, config: Optional[dict] = None, journal_f
     remember_names()
     client = world.client
     world_minute = world_minute or (lambda: client.final()["now"])
-    world_map = None
+    world_map, failed = None, 0
     while True:
         try:
+            set_patience(client, JOIN)
             world_map = world_map or client.map()
             snapshot = world.snapshot()
             if snapshot["now"] >= snapshot["endsAt"]:
@@ -58,11 +97,15 @@ def play_live(world: World, level: int, config: Optional[dict] = None, journal_f
             desk.rejoin(world.events(), world.snapshot(), Path(journal_folder) / f"{world.id}.jsonl")
             print(f"{clock(desk.now)} joined world {world.id}: {len(desk.books.orders)} orders in hand, {len(desk.books.gigs)} live gigs, "
                   f"{len(desk.books.unquoted)} open requests, market level {desk.market.mean:.2f}", flush=True)
+            failed = 0
+            set_patience(client, QUICK)
             follow(world, desk, world_minute)
             return
-        except Unreachable as error:  # the server restarts: the desk rebuilds its books and goes on
-            print(f"{error}. Joining again in 3 seconds.", flush=True)
-            time.sleep(3)
+        except Unreachable as error:  # the server restarts, or the network is down: the desk rebuilds its books and goes on
+            failed += 1
+            wait = min(3.0, 0.5 * failed)  # at once after one lost answer, slower while the server stays away
+            print(f"{error}. Joining again in {wait:g} seconds.", flush=True)
+            time.sleep(wait)
 
 
 def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
@@ -79,7 +122,10 @@ def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
             safely(desk.on_event, event)
             urgent = urgent or event["kind"] in desk.wake_on(desk.now)
         elif desk.now < desk.ends_at:
-            desk.now = max(desk.now, safely(world_minute) or desk.now)
+            try:
+                desk.now = max(desk.now, safely(world_minute) or desk.now)
+            except Unreachable as error:  # the clock can wait for the next check: the events carry the minute too
+                print(f"{clock(desk.now)} no answer to the clock: {str(error)[:90]}", flush=True)
         if event is None or time.monotonic() - looked >= LOOK_EVERY:
             looked = time.monotonic()
             if urgent or desk.now >= due:
@@ -103,8 +149,8 @@ def look(world: World, desk: Desk, quotes_only: bool = False) -> None:
         if desk.needs_sync:  # the world refused a withdrawal: read its own list of our gigs
             desk.needs_sync = False
             desk.sync(world.snapshot())
-    except Unreachable:
-        raise
+    except Unreachable as error:
+        recover(world, desk, error)
     except Exception as error:  # a refused batch or a bug must not stop the desk: read the world again and go on
         print(f"{clock(desk.now)} a look failed: {type(error).__name__}: {error}", flush=True)
         if not isinstance(error, SpreadError):
@@ -124,7 +170,10 @@ def safely(function: Callable, *args):
 
 
 def report(world: World, desk: Desk, day: int) -> None:
-    score = safely(world.score)
+    try:
+        score = safely(world.score)
+    except Unreachable:  # the day's line in the log is not worth a stop
+        score = None
     if score:
         print(f"{WEEKDAYS[day % 7]:<9}  margin €{score['marginCents'] / 100:>11,.2f}  {score['wonOrders']:>4} orders  {score['onTimeShare']:6.1%} on time  "
               f"{len(desk.books.waiting()):>3} without a driver | {dict(desk.tally)} | market level {desk.market.mean:.2f}", flush=True)
