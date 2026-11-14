@@ -7719,3 +7719,8 @@ ts,label,strategy,git_commit,code_hash,config,level,seed,world_id,status,ranked,
 2026-11-14T15:53:21Z,v19,dispatch,25c664c+,16a4f8f130,{},8,scan-006,w8475b14ecb4216bc9418,ok,1,12895.45,41930.00,94.94,395,375,20,0,,,,497,0,114,
 2026-11-14T15:53:21Z,v19,dispatch,25c664c+,16a4f8f130,{},8,scan-130,w097bd2706be6aa1ba152,ok,1,19821.27,48057.00,95.15,454,432,22,0,,,,489,0,114,
 2026-11-14T15:53:33Z,v19,dispatch,25c664c+,16a4f8f130,{},8,eval-01,w659105e268917a72b09f,ok,1,19579.05,47273.00,98.68,454,448,6,0,,,,500,0,126,
+2026-11-14T13:57:00Z,ranking-round-7,dispatch,2bdb877,,{},8,run-1,web3871e2e2ee53d52560,ok,1,19714.65,46702.00,97.10,417,,,2,,,,,,,rebuilt from the run's log: late and lost counts not kept
+2026-11-14T13:57:00Z,ranking-round-7,dispatch,2bdb877,,{},8,run-2,w6e0761d653c053d7e156,ok,1,20816.50,46092.00,98.70,451,,,0,,,,,,,rebuilt from the run's log: late and lost counts not kept
+2026-11-14T13:57:00Z,ranking-round-7,dispatch,2bdb877,,{},8,run-3,w715add9152a3d8fdcdaa,ok,1,9873.01,31761.00,93.30,299,,,1,,,,,,,rebuilt from the run's log: late and lost counts not kept
+2026-11-14T13:57:00Z,ranking-round-7,dispatch,2bdb877,,{},8,run-4,wd8179886f4c155570658,ok,1,16248.05,41300.00,96.50,432,,,0,,,,,,,rebuilt from the run's log: late and lost counts not kept
+2026-11-14T13:57:00Z,ranking-round-7,dispatch,2bdb877,,{},8,run-5,wc9c1b027773189aa8c32,ok,1,22926.17,51128.00,98.30,479,,,0,,,,,,,rebuilt from the run's log: late and lost counts not kept
