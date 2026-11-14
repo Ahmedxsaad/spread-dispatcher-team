@@ -1,0 +1,11 @@
+# The team key: never commit it.
+.env
+.venv/
+__pycache__/
+*.pyc
+# results/runs.csv is the evidence log and belongs in git. These are large, and any row reproduces them: worlds are deterministic.
+results/reveals/
+results/logs/
+results/.open/
+reveal-*/
+results/journal/
