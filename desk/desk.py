@@ -884,7 +884,7 @@ class Desk:
         untils = [order["lastPickupAt"]]
         if self.noted(facts):  # the world's last pickup minute follows the stated hours and deadline: ours follows the note
             order = {**order, "legs": [self.real(order["legs"][0], facts)] + order["legs"][1:]}
-            untils = [min(order["lastPickupAt"], self.last_pickup(order, min(deadline, facts.deliver_by or deadline) if delivery_horizon else None))]
+            untils = [min(order["lastPickupAt"], self.last_pickup(order, min(deadline, facts.deliver_by or deadline)))]
         untils += [self.last_pickup(order, minute) for minute in later]
         for stage, until in enumerate(untils):
             if until > self.now:
