@@ -134,7 +134,7 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
 
 - The curves are fitted on level 8 weeks. At other levels the desk is ranked but not tuned.
 - The guard assumes one day with few drivers a week and a loss of a quarter of that day's cars: 15% in a calm week, 10% for cars due after the weekend. Two such days, or a worse one, would cost on-time share.
-- The network. On Saturday evening the hall's Wi-Fi dropped for seconds at a time. The desk joins its world again by itself, and after its first request it no longer needs the name server, but each drop costs the requests of those seconds.
+- The network. On Saturday evening the hall's Wi-Fi dropped for seconds at a time, and it cost a test final 90 orders before the live loop was hardened (see Robustness). Each drop still costs the requests of its seconds, so the final is played from a machine in a data centre near the server, and the laptop is the standby.
 - A week in which drivers are scarce from its first day. The practice weeks hold none as hard as the one of the Saturday 15:00 round, so `v19`'s two rules for it are tested on the weeks nearest to it, not on it.
 
 ## Run it
@@ -174,6 +174,12 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 
 - The desk rebuilds its books from the world's event history and its own list of orders and gigs. With lost requests and lost answers injected into every kind of call, four weeks scored the same as without (`flaky` tests).
 - The live loop played the Saturday 14:00 test final, a week joined on Thursday: 9th of 55 ranked teams, €3,375, 98.5% on time, no failed look and no late quote.
+- The Saturday 20:00 test final, a full week, showed what a bad network does. The hall's Wi-Fi lost a request every minute or two. The kit waits 20 seconds for an answer, a world hour, and the desk then joined its world again from nothing: Monday ended with 66 orders, where an ordinary Monday has about 110. We finished 29th of 75 ranked teams with €15,129 at 99.2% on time, 35 orders short of the tenth place, with the same margin an order as the leaders. Three changes went into the running final, each by a restart of the desk, which is itself a test of the restart:
+  - A request in play waits 4 seconds for its answer, not 20. When none comes, the desk keeps its books, reads the events that it missed and the world's own list of our orders and gigs, and goes on. It joins the world again from nothing only when that fails three times.
+  - The final's clock is read in the background on a connection of its own, so a read without an answer holds no quote up.
+  - The kit's stream says "no event" for as long as nothing comes, also when its connection has died without a word. In the hours of the requests a live world is never silent for three seconds, so after three the desk opens the stream again from its last event, which misses nothing.
+
+  After them, on the same network: Thursday 97 orders and Friday 59, no rejoin, two lost requests recovered in place and four silent streams opened again. The desk also keeps the server's address after its first request, because the hall's name server failed for seconds at a time.
 - Full weeks played live on practice worlds whose clock moves at the final's pace, or three times as fast: without a restart €19,208 a week on four weeks that make €19,033 in practice mode; with one restart in the middle of each, €19,444. A restart costs nothing that these weeks can show.
 - `v20` played a full week live on a practice world at six times the final's pace while the hall's network dropped three times, with one planned restart across a midnight: €17,362 at 97.4% on time, on a week that makes €18,125 in practice mode and €16,235 with `v19`. The midnight counts that its calm-week rule needs are in the journal, and a desk that starts again reads them back; when one is missing, the week counts as not calm.
 - One look at the books takes 40 ms on average and 0.33 s at worst. A request waits 4.5 s.
