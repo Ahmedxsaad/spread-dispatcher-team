@@ -6,7 +6,7 @@ price war or an outage move it. The desk learns it from each quote that wins or 
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Callable, Optional
 
 from .clock import DAY, HOUR, clock
 from .model import FITTED
@@ -76,10 +76,20 @@ class Market:
         return self.mean + self.of_dealer(request)[0] + own + self.base(request, markup, trust, only_later) + self.in_outage(request, at)
 
     def chance(self, request: dict, markup: float, trust: int, only_later: bool, at: int = 0) -> float:
-        # The level is uncertain: a wider belief flattens the curve (the probit approximation of a logistic-normal mean).
-        doubt = self.var + self.of_dealer(request)[1] + sum(belief[1] * weight ** 2 for belief, weight in self.of_week(request))
-        z = self.score(request, markup, trust, only_later, at) / math.sqrt(1 + math.pi * doubt / 8)
-        return 1 / (1 + math.exp(-max(-30.0, min(30.0, z))))
+        return self.price_curve(request, trust, only_later, at)(markup)
+
+    def price_curve(self, request: dict, trust: int, only_later: bool, at: int = 0) -> Callable[[float], float]:
+        """Prepare one option's win curve. The dealer, lane and market beliefs are fixed while its prices are compared."""
+        dealer, parts = self.of_dealer(request), self.of_week(request)
+        level = self.mean + dealer[0] + sum(belief[0] * weight for belief, weight in parts)
+        doubt = self.var + dealer[1] + sum(belief[1] * weight ** 2 for belief, weight in parts)
+        flat = math.sqrt(1 + math.pi * doubt / 8)
+        outage = self.in_outage(request, at)
+
+        def chance(markup: float) -> float:
+            return sigmoid((level + self.base(request, markup, trust, only_later) + outage) / flat)
+
+        return chance
 
     def learn(self, request: dict, markup: float, trust: int, only_later: bool, won: bool, day: int, at: int = 0) -> None:
         """One step of Bayes for the level, from one quote that the dealer judged."""
@@ -208,7 +218,7 @@ class EventMarket(Market):
         pickup = request["legs"][0]["pickup"]["placeId"]
         return [0.0 if kind == "calm" else self.slope * WAR_STEP if kind == "war" else self.slope * OUTAGE_STEP if pickup in self.areas[kind] else 0.0 for _, _, _, kind in self.cases]
 
-    def chance(self, request: dict, markup: float, trust: int, only_later: bool, at: int = 0) -> float:
+    def price_curve(self, request: dict, trust: int, only_later: bool, at: int = 0) -> Callable[[float], float]:
         if request["arrivedAt"] // DAY > self.day:
             self.start(request["arrivedAt"] // DAY)
         if not self.asked or self.asked[0] != request["id"]:
@@ -217,8 +227,13 @@ class EventMarket(Market):
             doubt = self.of_dealer(request)[1] + sum(belief[1] * weight ** 2 for belief, weight in own)
             rest = self.of_dealer(request)[0] + sum(belief[0] * weight for belief, weight in own)
             self.asked = (request["id"], [(case[0] / total, case[1] + shift + rest, math.sqrt(1 + math.pi * (case[2] + doubt) / 8)) for case, shift in zip(self.cases, self.shifts(request))])
-        base = self.base(request, markup, trust, only_later)
-        return sum(weight * sigmoid((level + base) / flat) for weight, level, flat in self.asked[1])
+        cases = self.asked[1]
+
+        def chance(markup: float) -> float:
+            base = self.base(request, markup, trust, only_later)
+            return sum(weight * sigmoid((level + base) / flat) for weight, level, flat in cases)
+
+        return chance
 
     def learn(self, request: dict, markup: float, trust: int, only_later: bool, won: bool, day: int, at: int = 0) -> None:
         if request["arrivedAt"] // DAY > self.day:
@@ -311,11 +326,16 @@ class RegimeMarket(Market):
     def var(self, value: float) -> None:
         self._var = value
 
-    def chance(self, request: dict, markup: float, trust: int, only_later: bool, at: int = 0) -> float:
+    def price_curve(self, request: dict, trust: int, only_later: bool, at: int = 0) -> Callable[[float], float]:
         if not self.kinds or at // DAY != self.day:
             self.start(at // DAY)
-        base = self.base(request, markup, trust, only_later)
-        return sum(weight * sigmoid((kind[1] + base) / math.sqrt(1 + math.pi * kind[2] / 8)) for weight, kind in zip(self.weights(at), self.kinds))
+        cases = [(weight, kind[1], math.sqrt(1 + math.pi * kind[2] / 8)) for weight, kind in zip(self.weights(at), self.kinds)]
+
+        def chance(markup: float) -> float:
+            base = self.base(request, markup, trust, only_later)
+            return sum(weight * sigmoid((level + base) / flat) for weight, level, flat in cases)
+
+        return chance
 
     def learn(self, request: dict, markup: float, trust: int, only_later: bool, won: bool, day: int, at: int = 0) -> None:
         if not self.kinds or day != self.day:

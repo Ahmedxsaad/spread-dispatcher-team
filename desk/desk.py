@@ -455,7 +455,8 @@ class Desk:
             if self.set["pairs"] and self.set["pair_share"] and self.level >= 4 and len(request["legs"]) == 1:
                 plan = plan._replace(cost=plan.cost - self.set["pair_share"] * self.pair_share(request) * PAIRS["saving"] * plan.paid)
             only_later = options[0]["kind"] not in prices and option is not options[0]
-            profit, markup = max((self.market.chance(request, m, trust, only_later, request["respondBy"]) * (m * option["listPriceCents"] - plan.cost + plan.chance * gain), m) for m in MARKUPS)
+            chance = self.market.price_curve(request, trust, only_later, request["respondBy"])
+            profit, markup = max((chance(m) * (m * option["listPriceCents"] - plan.cost + plan.chance * gain), m) for m in MARKUPS)
             if profit >= self.set["min_profit"]:
                 drive = self.minutes[(request["legs"][0]["pickup"]["placeId"], request["legs"][0]["delivery"]["placeId"])]
                 factor = self.set["greed_short"][1] if drive <= self.set["greed_short"][0] else self.set["greed_long"][1] if drive >= self.set["greed_long"][0] else self.set["greed"]
