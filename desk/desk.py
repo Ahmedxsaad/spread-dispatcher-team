@@ -51,6 +51,7 @@ SETTINGS = {
     "greed": 1.06,  # a factor on the price that the models choose. Dealers react less to our price than the fitted curve says: 1.00 makes 14,027 a week, 1.06 14,785, 1.12 13,895 (g-*)
     "decline": 3.0,  # a price that no dealer takes, over the list price: a quote that loses costs nothing
     "max_waiting": 60,  # stop winning while this many orders have no driver
+    "friday_capacity": False,  # test four extra safe Monday offers when Friday's waiting limit binds
     "max_urgent": 20,  # ... or while this many of them are on the ladder: the last pickup is near
     "explore_fees": [0.5, 0.6, 0.7, 0.85, 1.0, 1.2, 1.4, 1.7, 2.0],
     # Two cars in one gig, when the second starts near where the first ends and ends near where the first starts: the driver
@@ -209,6 +210,8 @@ class Desk:
         self.asked: dict[str, tuple[float, int, bool]] = {}  # request id -> (lowest markup, the dealer's trust, only later options) of our quote
         self.facts: dict[str, notes.Facts] = {}  # request id -> what its note says
         self.judging: set[str] = set()  # requests with a quote that the dealer has not judged yet
+        self.friday_offers: set[str] = set()  # exception quotes issued, whether they win, lose or are still pending
+        self.friday_budget_known = now < 4 * DAY
         self.hold: dict[str, int] = {}  # order id -> no new gig before this minute, after the world refused one
         self.won_at: dict[str, int] = {}  # order id -> the minute we won it
         self.first_day = now // DAY if self.set["days_from_join"] else 0  # the day from which the driver curves count the week's days
@@ -273,19 +276,32 @@ class Desk:
         """Rebuilds the books of a week that is under way: every event so far, then the world's own
         list of our orders and gigs. The journal holds what the events do not: the prices that we
         asked, which the market model learns from."""
+        friday_journal_ok = True
+        friday_marker = False
         if journal is not None:
             journal.parent.mkdir(parents=True, exist_ok=True)
             for line in journal.read_text(encoding="utf-8").splitlines() if journal.exists() else ():
                 try:
                     entry = json.loads(line)
+                    if "friday_budget_open" in entry:
+                        friday_marker = entry["friday_budget_open"] is True
+                        continue
+                    if entry.get("friday_capacity"):
+                        self.friday_offers.add(entry["request"])
                     if "night" in entry:
                         self.nights[int(entry["night"])] = int(entry["waiting"])
                         continue
                     self.asked[entry["request"]] = tuple(entry["asked"])
                     self.plans[entry["request"]] = {kind: Plan(fee, 0.95, 0.0, 0) for kind, fee in entry["fees"].items()}
                 except (ValueError, KeyError, TypeError):
+                    friday_journal_ok = False
                     continue  # a line cut off by a crash
             self.journal = open(journal, "a", buffering=1, encoding="utf-8")
+        if self.set["friday_capacity"]:
+            # A fresh machine joining on Friday cannot know how many offers the previous one sent.
+            self.friday_budget_known = snapshot["now"] < 4 * DAY or (friday_journal_ok and friday_marker)
+            if self.journal and snapshot["now"] < 4 * DAY and not friday_marker:
+                self.journal.write('{"friday_budget_open": true}\n')
         for event in history:
             self.on_event(event)
         self.changed.clear()  # the snapshot already shows every change of plan
@@ -398,23 +414,33 @@ class Desk:
 
     def quote_requests(self) -> None:
         self.off_app = {order["id"] for order in self.books.waiting() if self.waits_for_partner(order)} if self.set["pair_hold"][0] else set()
-        full = self.load() >= self.set["max_waiting"] or self.urgent() >= self.set["max_urgent"]
+        urgent = self.urgent()
+        full = self.load() >= self.set["max_waiting"] or urgent >= self.set["max_urgent"]
+        friday_room = (self.set["friday_capacity"] and self.friday_budget_known and self.level == 8 and not self.set["explore"]
+                       and self.now // DAY == 4 and full and urgent < self.set["max_urgent"])
+        new_offers = min(1, 4 - len(self.friday_offers))
         self.due_now, self.limit_now, self.limit_early, self.limit_later = self.due(), self.day_limit(), self.day_limit(early=True), self.day_limit(later=True)
         # The week has on-time share to spare when few of its cars are late or at risk: only then it takes the riskier long lanes.
-        self.spare_now = (self.books.late_count + self.urgent()) / max(self.books.won_count, self.set["guard_orders"] * self.week_left() / 2) < self.set["spare"]
+        self.spare_now = (self.books.late_count + urgent) / max(self.books.won_count, self.set["guard_orders"] * self.week_left() / 2) < self.set["spare"]
         self.pairable = [order for order in self.books.orders.values() if self.can_pair(order)] if self.books.unquoted else []
         requests, self.books.unquoted = self.books.unquoted, []
         for request_id in requests:
             request = self.books.requests.get(request_id)
             if request is None or request["respondBy"] <= self.now:
                 continue
-            prices = self.prices(request, full)
+            if friday_room and (new_offers > 0 or request_id in self.friday_offers):
+                already_counted = request_id in self.friday_offers
+                prices = self.prices(request, full, friday_exception=True)
+                if not already_counted and request_id in self.friday_offers:
+                    new_offers = 0  # at most one new exception in this look, even for a bulk request
+            else:
+                prices = self.prices(request, full)
             if prices:
                 self.books.quotes[request_id] = prices
                 self.judging.add(request_id)
                 self.send({"type": "quote", "requestId": request_id, "prices": prices})
 
-    def prices(self, request: dict, full: bool) -> Optional[dict]:
+    def prices(self, request: dict, full: bool, friday_exception: bool = False) -> Optional[dict]:
         """A price for each option that we offer; None for no quote. An option gets the price with the
         highest expected profit: the chance that the dealer takes it, times what it leaves after the
         car's expected cost, plus what the dealer's trust gains from one more order on time."""
@@ -427,6 +453,10 @@ class Desk:
             return {options[0]["kind"]: options[0]["listPriceCents"]}
         decline = {options[0]["kind"]: euros(options[0]["listPriceCents"] * self.set["decline"])}
         facts = self.facts.get(request["id"]) or notes.Facts()
+        if friday_exception:
+            leg = request["legs"][0]
+            full = (len(request["legs"]) != 1 or leg["car"]["premium"] or leg["pickup"]["privateAddress"]
+                    or leg["delivery"]["privateAddress"] or self.charging(leg) or facts != notes.Facts())
         no_trade_in = len(request["legs"]) > 1 and (not self.set["trade_ins"] or self.noted(facts) or facts.ready_at is not None)
         if full or no_trade_in or facts.unsure or facts.summer_tyres:
             self.tally["declined: too many orders without a driver" if full else "declined: trade-in" if no_trade_in else "declined: the note"] += 1
@@ -444,6 +474,8 @@ class Desk:
             plan = self.plan(request, option, request["respondBy"])
             if plan is None:
                 self.tally["options without a driver in time"] += 1
+                continue
+            if friday_exception and (plan.until // DAY != 7 or plan.chance < 0.95):
                 continue
             limit = self.limit_later if plan.until // DAY > 4 else self.limit_early if plan.until // DAY <= self.set["guard_early"][1] else self.limit_now
             safe = min(self.set["guard_safe"], self.set["guard_spent_safe"]) if limit <= 0 else self.set["guard_safe"]  # a limit of zero or less: the allowance is spent
@@ -478,8 +510,13 @@ class Desk:
         self.plans[request["id"]] = plans
         self.due_now[next(iter(plans.values())).until // DAY] += 0.6
         self.asked[request["id"]] = (min(markups), trust, options[0]["kind"] not in prices)
+        if friday_exception:
+            self.friday_offers.add(request["id"])
         if self.journal:
-            self.journal.write(json.dumps({"request": request["id"], "asked": self.asked[request["id"]], "fees": {kind: plan.fee for kind, plan in plans.items()}}) + "\n")
+            entry = {"request": request["id"], "asked": self.asked[request["id"]], "fees": {kind: plan.fee for kind, plan in plans.items()}}
+            if friday_exception:
+                entry["friday_capacity"] = True
+            self.journal.write(json.dumps(entry) + "\n")
         return prices
 
     def plan(self, request: dict, option: dict, post_at: int) -> Optional[Plan]:
