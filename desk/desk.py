@@ -37,6 +37,7 @@ SETTINGS = {
     "trust_value": 0.0,  # how much of a trust point's worth lowers our price, to win the order and its point. Measured: pricing low to buy trust loses (u-gain0, t-trust2)
     "trust_late": 1.0,  # how much of the trust that a late car loses counts in its cost
     "win_share": 0.4,  # the share of a dealer's later requests that we expect to win
+    "clear_summer_pickups": False,  # single ordinary dealer cars whose entire pickup period is clear through the last pickup
     "min_profit": 200,  # cents: no price for an option that is expected to make less
     "fast_factor": 1.0,  # a factor on the price of the fastest option when we also offer a later one: later options leave us more per car
     "drop_bump": 1.0,  # after a driver gives a gig back, its fee starts again at the fee that was booked times this
@@ -430,7 +431,8 @@ class Desk:
         decline = {options[0]["kind"]: euros(options[0]["listPriceCents"] * self.set["decline"])}
         facts = self.facts.get(request["id"]) or notes.Facts()
         no_trade_in = len(request["legs"]) > 1 and (not self.set["trade_ins"] or self.noted(facts) or facts.ready_at is not None)
-        if full or no_trade_in or facts.unsure or facts.summer_tyres:
+        clear_summer = self.set["clear_summer_pickups"] and self.summer_car(request, facts)
+        if full or no_trade_in or facts.unsure or (facts.summer_tyres and not clear_summer):
             self.tally["declined: too many orders without a driver" if full else "declined: trade-in" if no_trade_in else "declined: the note"] += 1
             return decline
         if self.set["explore"]:
@@ -497,11 +499,35 @@ class Desk:
         if ready // DAY > leg["pickup"]["window"]["from"] // DAY:  # a car that is ready a day or more later moves its deadline by the same days
             deadline += (ready // DAY - leg["pickup"]["window"]["from"] // DAY) * DAY
         until = self.last_pickup({"legs": [leg] + request["legs"][1:], "deliveredAt": [None] * len(request["legs"])}, min(deadline, facts.deliver_by or deadline))
+        if self.set["clear_summer_pickups"] and facts.summer_tyres:
+            window = self.clear_pickup(leg, max(post_at, ready), until)
+            if window is None or window["from"] != max(post_at, ready) or window["to"] < until:
+                return None
         if until - max(post_at, ready) < HOUR:
             return None
         if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
             return None  # few drivers work today: no new car that needs one today
         return self.best_fee(leg, request["referenceFeeCents"], post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"]))
+
+    @staticmethod
+    def summer_car(request: dict, facts: notes.Facts) -> bool:
+        """Only a summer-tyre note, on a plain single car between dealer sites."""
+        leg = request["legs"][0]
+        return (len(request["legs"]) == 1 and facts == notes.Facts(summer_tyres=True)
+                and not leg["car"]["premium"] and not leg["pickup"]["privateAddress"] and not leg["delivery"]["privateAddress"])
+
+    def clear_pickup(self, leg: dict, start: int, end: int) -> Optional[dict]:
+        """Earliest clear interval at both endpoints. Forecasts announce the next day's snow at midnight."""
+        end = min(end, (self.now // DAY + 2) * DAY - 1, self.ends_at)
+        places = {leg["pickup"]["placeId"], leg["delivery"]["placeId"]}
+        for storm in sorted(self.books.snow, key=lambda f: f["from"]):
+            if not places.intersection(storm["placeIds"]) or storm["to"] <= start or storm["from"] > end:
+                continue
+            if storm["from"] > start:
+                end = storm["from"] - 1
+                break
+            start = storm["to"]
+        return {"from": start, "to": end} if start < end else None
 
     def plan_trade_in(self, request: dict, option: dict, post_at: int) -> Optional[Plan]:
         """A trade-in goes as one gig at one fee: the new car to the customer inside the booked hour,
@@ -685,6 +711,7 @@ class Desk:
         leg = order["legs"][0]
         if (len(order["legs"]) != 1 or order["deliveredAt"][0] is not None or order["id"] in self.alone or self.hold.get(order["id"], 0) > self.now
                 or leg["pickup"]["privateAddress"] or leg["delivery"]["privateAddress"] or leg["car"]["premium"]
+                or (self.set["clear_summer_pickups"] and facts.summer_tyres)
                 or self.noted(facts) or facts.ready_at is not None or self.books.failed.get((order["id"], 0))):
             return False
         stage, until = self.stage(order)
@@ -771,7 +798,18 @@ class Desk:
                     "manualLicence": facts.manual or "licence" in reasons}
         stage, until = self.stage(order)
         reference = self.reference_of([(order["id"], leg) for leg in legs])
-        action = {"type": "post", "stops": self.stops(order, legs, facts, until if stage == 0 else None), "audience": audience, "schedule": self.fees(order, reference, stage, until)}
+        stops = self.stops(order, legs, facts, until if stage == 0 else None)
+        if self.set["clear_summer_pickups"] and self.summer_car(order, facts):
+            # Even after a missed pickup, a refused post or a restart, never post a bare pickup over a storm.
+            leg = order["legs"][0]
+            ready = max([self.now, leg["pickup"]["window"]["from"]] +
+                        [at + 2 * HOUR for reason, at, _ in self.books.failed.get((order["id"], 0), []) if reason in ("not_ready", "closed")])
+            end = until if stage == 0 else self.ends_at
+            window = self.clear_pickup(leg, ready, end)
+            if window is None:
+                return
+            stops[0]["window"] = window
+        action = {"type": "post", "stops": stops, "audience": audience, "schedule": self.fees(order, reference, stage, until)}
         self.send(action, at=self.now, order=order["id"], stage=stage, until=until)
 
     def stops(self, order: dict, legs: list[int], facts: notes.Facts, stage_until: Optional[int] = None) -> list[dict]:
