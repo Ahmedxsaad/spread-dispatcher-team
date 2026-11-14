@@ -75,6 +75,11 @@ SETTINGS = {
     "explore_caps": [25, 40, 60, 90],  # an exploring desk draws its max_waiting from these, by the world's number of drivers
     # Fees, over the typical fee
     "fees": [0.85, 0.95, 1.05, 1.15, 1.25, 1.35, 1.5, 1.7, 1.85, 2.0],  # the opening fees to choose from. Lower ones book too slowly (v4-f70 against v4-f85)
+    # The cars that book most easily can open lower still. In 80 weeks with random opening fees, the cars of which 94 in 100 book
+    # at 0.85 cost 0.85 of the typical fee in the end when they opened at 0.70, against 0.93 when they opened at 0.85. For the
+    # other cars a lower opening fee saves nothing and makes more of them late.
+    # In play, on 120 weeks: 233 a week more (standard error 99), and more cars on time, because the desk then wins more of these cars (qe-94). From 0.97 on: no gain (qe-97)
+    "easy": [0.94, 0.72],  # [the share of such cars that book at the lowest opening fee, from which a car may open lower; that lower fee]; 1.0: never
     "rise": [[0.25, 1.15], [0.6, 1.3]],  # raises before the ladder: [share of the time until the ladder, fee over the opening fee]. On 40 weeks: 450 a week more, and more cars on time (y-rise)
     "judge_at": 1.0,  # the fee, over the opening fee, at which we judge the chance of a driver in time
     "driver_towns": False,  # the driver curves count each town's own effect, beyond the drivers who live near it. Measured on 120 weeks: no gain (t-towns)
@@ -454,7 +459,13 @@ class Desk:
         pickup, delivery = leg["pickup"], leg["delivery"]
         towns = (pickup["placeId"], delivery["placeId"]) if self.set["driver_towns"] else ()
         best, floor = None, 0.0
-        for fee in self.set["fees"]:
+        fees = self.set["fees"]
+        if self.set["easy"][0] < 1:
+            lowest = gig_features(awake_between(post_at, until) / 60, self.minutes[(pickup["placeId"], delivery["placeId"])] / 60, fees[0], self.near[pickup["placeId"]],
+                                  self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY, self.load())
+            if logistic(FITTED["booked_at_opening"], lowest) >= self.set["easy"][0]:
+                fees = [self.set["easy"][1]] + fees
+        for fee in fees:
             x = gig_features(awake_between(post_at, until) / 60, self.minutes[(pickup["placeId"], delivery["placeId"])] / 60, fee, self.near[pickup["placeId"]],
                              self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY, self.load())
             # The fitted curve gives the share of gigs that a driver takes at a fee or below it: the steps of the schedule walk up it.

@@ -21,10 +21,19 @@ Level 8, mean margin a week on the same 20 practice weeks (`eval-01` to `eval-20
 | `v15` | Riskier cars while the week has on-time share to spare | €17,384 | 97.2% | 92.8% |
 | `v16` | Trade-ins | €17,363 | 97.1% | 93.1% |
 | `v17` | A market learner that follows the competitor's own moves | €17,408 | 96.8% | 93.6% |
+| `v18` | The easiest cars open at a lower fee | €17,508 | 97.2% | 93.3% |
 
-On weeks that no setting was tuned on, `v17` makes €17,253 a week at 97.0% on time (20 weeks, `hold-01` to `hold-20`, lowest week 93.8%).
+On weeks that no setting was tuned on, `v18` makes €17,690 a week at 97.4% on time (20 weeks, `hold-01` to `hold-20`, lowest week 93.7%).
 
-A gain of a few hundred euros a week does not show on 40 weeks: there the standard error of a difference is €150 to €200. So 80 more weeks (`more-01` to `more-80`) judge the last steps. On all 120 weeks `v17` makes €17,023 a week at 96.9% on time, and `v16` €16,709 at 96.7%: €314 more (standard error €105), better on 78 of the 120 weeks. All 120 weeks are ranked, and the lowest is 91.5% on time.
+A gain of a few hundred euros a week does not show on 40 weeks: there the standard error of a difference is €150 to €200. So 80 more weeks (`more-01` to `more-80`) judge the last two steps. On all 120 weeks:
+
+| Version | Margin a week | On time | Lowest week | Late cars a week |
+|---|---|---|---|---|
+| `v16` | €16,709 | 96.7% | 91.6% | 13.0 |
+| `v17` | €17,023 | 96.9% | 91.5% | 12.2 |
+| `v18` | €17,256 | 97.2% | 93.2% | 11.3 |
+
+`v17` makes €314 a week more than `v16` (standard error €105), and `v18` €233 more than `v17` (standard error €99). Together: €546 (standard error €125), better on 80 of the 120 weeks. All 120 weeks are ranked.
 
 Ranking rounds at level 8, five secret weeks each:
 
@@ -32,8 +41,9 @@ Ranking rounds at level 8, five secret weeks each:
 |---|---|---|---|
 | Saturday 00:00 | `v11` | €74,742 | 97.6% |
 | Saturday 09:00 | `v16` | €77,573 | 97.2% |
+| Saturday 12:00 | `v17` | €99,211 | 97.8% |
 
-In the Saturday 09:00 round this was the second highest total of the 68 teams that played it. The highest was €79,003.
+In the Saturday 09:00 round this was the second highest total of the 68 teams that played it. The highest was €79,003. In the Saturday 12:00 round it was the highest of the 34 teams that had finished when we played, at 12:34. The second was €98,990.
 
 ## How it decides
 
@@ -60,6 +70,7 @@ On top of that, each idea below has a reason and a measured effect, on the same 
 | Fee raises before the last hours | A gig that is not taken at its opening fee goes up in two steps before the steep last hours. | +€448, and more cars on time |
 | Riskier cars while there is room | Long lanes earn €80 to €100 a car. The desk takes them, and others, at a lower chance only while the week's late share is under 3%. | +€367 and +€345 |
 | The competitor's own moves | The handbook says how the competitor's prices move in a week: once, its price list changes shape, so short and long lanes move in opposite directions, and some mornings its prices for cars leaving a place, or arriving there, move a step. The learner has one part for each. On 80 weeks with random prices it predicts the next answer 3.9% better. | +€314 on 120 weeks, and 0.8 fewer late cars a week |
+| The easiest cars open lower | In 80 weeks with random opening fees, the cars of which 94 in 100 book at 0.85 of the typical fee cost 0.85 in the end when they opened at 0.70, and 0.93 when they opened at 0.85. For other cars a lower opening fee saves nothing and makes more of them late. So only these cars may open at 0.72. Their expected cost falls, so does their price, and the desk wins more of them. | +€233 on 120 weeks, 0.9 fewer late cars a week, lowest week 91.5% to 93.2% |
 | Trade-ins | Their list price is 1.9 times the typical fee, against 1.1 for other cars. The world lets a driver bring the new car after the customer's booked hour, so the gig carries its own window on that stop: 94% arrive inside it. | +€204 |
 
 ## What did not work
@@ -79,7 +90,9 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
 - Town effects in the driver curves: 1.3% better on paper, no gain on 120 weeks (`t-towns`).
 - Direct offers to the drivers who looked at a gig and did not book it: 15 of 959 were accepted, and 2 of 331 at the fee in the app. A driver who looks and leaves needs a higher fee (`w-vo-smoke`).
 - A driver level learned during the week, as the dealers' level is: it predicts the next gigs worse than the fixed curve, because a quick booking is known at once and a gig without a driver only hours later.
-- A lower price factor with the new learner (`qg-103`).
+- A lower or a higher price factor with the new learner: €321 and €489 a week less (`qg-103`, `qg-109`).
+- A guard that counts on fewer orders when the week wins them at a slow pace: it changed 5 of 80 weeks and did not lift the lowest ones (`qp-pace`).
+- The lower opening fee for the very easiest cars alone, from 97 in 100: no gain (`qe-97`).
 
 ## What would break it
 
@@ -98,7 +111,7 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 
 .venv/bin/python dispatch.py --level 8 --seed eval-01          # one practice week
 .venv/bin/python -m eval.run --label try --set l8              # the 20 tuning weeks, 8 at a time
-.venv/bin/python -m eval.compare v17 try                       # week by week against a version in the log
+.venv/bin/python -m eval.compare v18 try                       # week by week against a version in the log
 ./play_ranking_round.sh 8                                      # the five weeks of the current ranking round
 ./run_final.sh                                                 # the final or a test final: waits, plays, restarts itself
 ```
