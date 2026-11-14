@@ -48,6 +48,7 @@ SETTINGS = {
     "greed_range": [1.02, 1.09],  # the factor stays inside this range
     "greed_load": [0.0, 30],  # [how much the factor rises for each order without a driver above the usual number, that number]: with few cars waiting, drivers are free for more; 0: no such rise
     "greed_later": 0.0,  # the factor for a car due after the weekend: the driver curve says 88 in 100 of them get a driver in time, and 97 in 100 do, so their cost is put too high; 0.0: as any other car
+    "opening_two_hours": False,  # use 1.03 for level 8 requests that arrive before 10:00 on the first Monday
     "greed": 1.06,  # a factor on the price that the models choose. Dealers react less to our price than the fitted curve says: 1.00 makes 14,027 a week, 1.06 14,785, 1.12 13,895 (g-*)
     "decline": 3.0,  # a price that no dealer takes, over the list price: a quote that loses costs nothing
     "max_waiting": 60,  # stop winning while this many orders have no driver
@@ -462,7 +463,13 @@ class Desk:
             profit, markup = max((chance(m) * (m * option["listPriceCents"] - plan.cost + plan.chance * gain), m) for m in MARKUPS)
             if profit >= self.set["min_profit"]:
                 drive = self.minutes[(request["legs"][0]["pickup"]["placeId"], request["legs"][0]["delivery"]["placeId"])]
-                factor = self.set["greed_short"][1] if drive <= self.set["greed_short"][0] else self.set["greed_long"][1] if drive >= self.set["greed_long"][0] else self.set["greed"]
+                factor = self.set["greed"]
+                if drive <= self.set["greed_short"][0]:
+                    factor = self.set["greed_short"][1]
+                elif drive >= self.set["greed_long"][0]:
+                    factor = self.set["greed_long"][1]
+                elif self.set["opening_two_hours"] and self.level == 8 and request["arrivedAt"] < 10 * HOUR:
+                    factor = 1.03
                 if self.set["greed_slope"] or self.set["greed_load"][0]:  # a cheap competitor, or drivers with time to spare, leave less room above the price that the models choose
                     low, high = self.set["greed_range"]
                     factor += self.set["greed_slope"] * (self.market.mean - AVERAGE_LEVEL) + self.set["greed_load"][0] * (self.load() - self.set["greed_load"][1])
