@@ -59,6 +59,7 @@ SETTINGS = {
     "pair_hop": 60,  # road minutes at most from the first car's delivery to the second car's pickup
     "pair_back": 120,  # ... and from the second car's delivery back to the first car's pickup. The way back may be longer than the hop (p-hop*)
     "pair_fee": 0.75,  # the pair's fee, over the sum of the two typical fees
+    "tight_pair_fee": [],  # [maximum empty/loaded road minutes, fee over the two typical fees]; empty uses pair_fee everywhere
     "pair_wait": 90,  # minutes at most that the driver waits for the second car to be ready
     # A car that we post alone is mostly booked within minutes, and then a return car that we win an hour later has no partner.
     # So a new car that could go in a pair stays off the app for a while, as long as requests still arrive and its pickup is far.
@@ -718,7 +719,7 @@ class Desk:
                     if plan:
                         plans.append((plan[0], x["id"], y["id"], plan[1]))
         paired: set[str] = set()
-        for _, x_id, y_id, until in sorted(plans):
+        for empty_minutes, x_id, y_id, until in sorted(plans):
             if x_id in paired or y_id in paired:
                 continue
             paired.update((x_id, y_id))
@@ -730,7 +731,14 @@ class Desk:
                     self.books.withdrawn(gig_id)
             facts = [self.facts.get(order_id) or notes.Facts() for order_id in (x_id, y_id)]
             reference = self.reference_of([(x_id, 0), (y_id, 0)])
-            opening, early = self.intro(1.0, until, self.set["pair_intro"])
+            opening = 1.0
+            if self.set["tight_pair_fee"]:
+                max_empty_share, fee = self.set["tight_pair_fee"]
+                loaded_minutes = self.drive(x, [0]) + self.drive(y, [0])
+                if loaded_minutes > 0 and empty_minutes <= max_empty_share * loaded_minutes:
+                    opening = fee / self.set["pair_fee"]
+                    self.tally["tight pair openings"] += 1
+            opening, early = self.intro(opening, until, self.set["pair_intro"])
             action = {"type": "post", "stops": self.stops(x, [0], facts[0]) + self.stops(y, [0], facts[1]),
                       "audience": {"experienced": False, "manualLicence": facts[0].manual or facts[1].manual},
                       "schedule": schedule(self.now, reference, opening, until - self.set["reach"], self.set["ladder"], self.set["pair_rise"], single=self.level == 1, early=early)}
