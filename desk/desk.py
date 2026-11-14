@@ -36,6 +36,7 @@ SETTINGS = {
     "late_cost": 0.6,  # what a late car costs us beyond its fee, as a share of its list price: the refund, and the dealer's goodwill
     "trust_value": 0.0,  # how much of a trust point's worth lowers our price, to win the order and its point. Measured: pricing low to buy trust loses (u-gain0, t-trust2)
     "trust_rescue": False,  # retry a completely unprofitable menu with dealer goodwill at the time a missed deadline can affect it
+    "trust_all_quotes": False,  # value the goodwill cost from each delivery deadline when quoting any menu
     "trust_late": 1.0,  # how much of the trust that a late car loses counts in its cost
     "win_share": 0.4,  # the share of a dealer's later requests that we expect to win
     "min_profit": 200,  # cents: no price for an option that is expected to make less
@@ -442,6 +443,7 @@ class Desk:
         dealer = request["dealerId"]
         trust = self.books.trust[dealer]
         gain = self.set["trust_value"] * self.trust_point(dealer) if trust + self.pending(dealer) < 25 else 0.0  # the dealer counts at most 25 orders
+        delivery_horizon = delivery_horizon or self.set["trust_all_quotes"]
         prices, plans, markups = {}, {}, []
         for option in options:
             plan = self.plan(request, option, request["respondBy"], delivery_horizon)
