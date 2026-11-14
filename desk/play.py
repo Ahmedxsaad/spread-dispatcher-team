@@ -15,6 +15,8 @@ WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 def play_practice(world: World, level: int, config: Optional[dict] = None) -> None:
     """Looks at the world every few minutes while requests can arrive, and at once when a plan
     fails. Each look is one request: it sends the actions of the last look and moves the clock."""
+    if (config or {}).get("join_day"):  # as in a test final: the week runs without us until that day
+        world.advance(to=config["join_day"] * DAY)
     snapshot = world.snapshot()
     now, ends_at = snapshot["now"], snapshot["endsAt"]
     desk = Desk(level, config, world.client.map(), world.roster(), now, ends_at)

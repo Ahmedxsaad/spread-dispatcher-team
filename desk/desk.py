@@ -17,6 +17,10 @@ from .market import Market, RegimeMarket
 from .model import FITTED, air_km, at_fee, drivers_near, gig_features, logistic
 
 SETTINGS = {
+    "join_day": 0,  # practice only: the day on which the desk joins the week, with nothing done before it, as a test final does (Thursday: 3)
+    # A desk that joins the week late, as in a test final: the driver curves count the days from the join, not from Monday, because its drivers
+    # are as free as on a Monday, and the guard counts on the orders of the days that are left. On 80 half weeks from Thursday the first part alone made 103 more (hw-days)
+    "days_from_join": False,
     "tick": 12,  # minutes between two looks at the world while requests can arrive; a request waits 15 minutes for its quote
     "seed": 1,
     "explore": False,  # random prices and opening fees, to measure how dealers and drivers answer them
@@ -36,6 +40,11 @@ SETTINGS = {
     "drop_bump": 1.0,  # after a driver gives a gig back, its fee starts again at the fee that was booked times this
     "greed_short": [0, 1.06],  # [drive minutes, factor]: lanes up to this length have their own factor
     "greed_long": [100000, 1.06],  # ... and lanes from this length on
+    # The factor follows the market: in a week with a cheap competitor a lower factor does as well or better, and a higher one loses most.
+    # On 80 fresh weeks, by quarter of the week's level, a factor of 1.03 against 1.06 makes -17, +239, -589, -916 and 1.09 makes -725, -572, -427, -232.
+    "greed_slope": 0.0,  # how much the factor rises for each unit of the day's level above the level of an average day, in the curve's units; 0: one factor
+    "greed_range": [1.02, 1.09],  # the factor stays inside this range
+    "greed_load": [0.0, 30],  # [how much the factor rises for each order without a driver above the usual number, that number]: with few cars waiting, drivers are free for more; 0: no such rise
     "greed": 1.06,  # a factor on the price that the models choose. Dealers react less to our price than the fitted curve says: 1.00 makes 14,027 a week, 1.06 14,785, 1.12 13,895 (g-*)
     "decline": 3.0,  # a price that no dealer takes, over the list price: a quote that loses costs nothing
     "max_waiting": 60,  # stop winning while this many orders have no driver
@@ -122,6 +131,7 @@ SETTINGS = {
 URGENT = ["order_changed", "order_cancelled", "visit_failed", "gig_expired", "gig_dropped", "no_show", "offer_answered"]
 HOME_KM = 40  # a gig that ends this near a driver's home saves them the trip home
 MARKUPS = [0.96 + 0.02 * step for step in range(83)]  # the prices to choose from, over the list price: 0.96 to 2.6
+AVERAGE_LEVEL = FITTED["dealer"]["level"]  # the day's level of the dealer curve on an average day of an average world
 REQUEST_MINUTES = 5 * 10 * HOUR  # requests arrive on five days, almost all from 08:00 to 18:00
 
 
@@ -171,6 +181,7 @@ class Desk:
         self.judging: set[str] = set()  # requests with a quote that the dealer has not judged yet
         self.hold: dict[str, int] = {}  # order id -> no new gig before this minute, after the world refused one
         self.won_at: dict[str, int] = {}  # order id -> the minute we won it
+        self.first_day = now // DAY if self.set["days_from_join"] else 0  # the day from which the driver curves count the week's days
         self.looked: dict[str, dict[str, int]] = defaultdict(dict)  # order id -> the drivers who viewed a gig of it, with the minute of their last view
         self.tried: dict[str, set] = defaultdict(set)  # order id -> the drivers who got an offer of it as its viewers
         self.off_app: set[str] = set()  # the orders that wait for a partner at this look: no driver can see them yet
@@ -221,6 +232,8 @@ class Desk:
             request_id = event["order"]["id"] if kind == "order_won" else event["requestId"]
             if kind == "order_won":
                 self.won_at[request_id] = event["at"]
+                if self.set["days_from_join"]:  # after a restart: the desk joined no later than its first order
+                    self.first_day = min(self.first_day, event["at"] // DAY)
             self.judging.discard(request_id)
             self.learn(request_id, event["order"] if kind == "order_won" else None, event["at"])
         self.books.on_event(event)
@@ -352,7 +365,7 @@ class Desk:
         full = self.load() >= self.set["max_waiting"] or self.urgent() >= self.set["max_urgent"]
         self.due_now, self.limit_now = self.due(), self.day_limit()
         # The week has on-time share to spare when few of its cars are late or at risk: only then it takes the riskier long lanes.
-        self.spare_now = (self.books.late_count + self.urgent()) / max(self.books.won_count, self.set["guard_orders"] / 2) < self.set["spare"]
+        self.spare_now = (self.books.late_count + self.urgent()) / max(self.books.won_count, self.set["guard_orders"] * self.week_left() / 2) < self.set["spare"]
         self.pairable = [order for order in self.books.orders.values() if self.can_pair(order)] if self.books.unquoted else []
         requests, self.books.unquoted = self.books.unquoted, []
         for request_id in requests:
@@ -405,7 +418,12 @@ class Desk:
             profit, markup = max((self.market.chance(request, m, trust, only_later, request["respondBy"]) * (m * option["listPriceCents"] - plan.cost + plan.chance * gain), m) for m in MARKUPS)
             if profit >= self.set["min_profit"]:
                 drive = self.minutes[(request["legs"][0]["pickup"]["placeId"], request["legs"][0]["delivery"]["placeId"])]
-                markup *= self.set["greed_short"][1] if drive <= self.set["greed_short"][0] else self.set["greed_long"][1] if drive >= self.set["greed_long"][0] else self.set["greed"]
+                factor = self.set["greed_short"][1] if drive <= self.set["greed_short"][0] else self.set["greed_long"][1] if drive >= self.set["greed_long"][0] else self.set["greed"]
+                if self.set["greed_slope"] or self.set["greed_load"][0]:  # a cheap competitor, or drivers with time to spare, leave less room above the price that the models choose
+                    low, high = self.set["greed_range"]
+                    factor += self.set["greed_slope"] * (self.market.mean - AVERAGE_LEVEL) + self.set["greed_load"][0] * (self.load() - self.set["greed_load"][1])
+                    factor = max(low, min(high, factor))
+                markup *= factor
                 prices[option["kind"]], plans[option["kind"]] = euros(markup * option["listPriceCents"]), plan
                 markups.append(markup)
         if len(prices) > 1 and self.set["fast_factor"] != 1.0:  # steer the dealer to a later option
@@ -457,7 +475,7 @@ class Desk:
         pickup, delivery = legs[0]["pickup"], legs[0]["delivery"]
         fee = self.set["trade_in_fee"]
         x = gig_features(awake_between(post_at, until) / 60, drive / 60, fee, self.near[pickup["placeId"]], self.near[delivery["placeId"]],
-                         any(leg["car"]["premium"] for leg in legs), False, True, post_at // DAY, self.load())
+                         any(leg["car"]["premium"] for leg in legs), False, True, post_at // DAY - self.first_day, self.load())
         chance = logistic(FITTED["driver_in_time"], x)
         if chance < (self.set["trade_in_chance"] or (self.set["spare_chance"] if self.spare_now else self.set["min_chance"])):
             return None
@@ -471,17 +489,17 @@ class Desk:
         fees = self.set["fees"]
         if self.set["easy"][0] < 1:
             lowest = gig_features(awake_between(post_at, until) / 60, self.minutes[(pickup["placeId"], delivery["placeId"])] / 60, fees[0], self.near[pickup["placeId"]],
-                                  self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY, self.load())
+                                  self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY - self.first_day, self.load())
             if logistic(FITTED["booked_at_opening"], lowest) >= self.set["easy"][0]:
                 fees = [self.set["easy"][1]] + fees
         if self.set["hard"][0] > 0:
             lowest = gig_features(awake_between(post_at, until) / 60, self.minutes[(pickup["placeId"], delivery["placeId"])] / 60, self.set["fees"][0], self.near[pickup["placeId"]],
-                                  self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY, self.load())
+                                  self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY - self.first_day, self.load())
             if logistic(FITTED["booked_at_opening"], lowest) < self.set["hard"][0]:
                 fees = [fee for fee in fees if fee >= self.set["hard"][1]]
         for fee in fees:
             x = gig_features(awake_between(post_at, until) / 60, self.minutes[(pickup["placeId"], delivery["placeId"])] / 60, fee, self.near[pickup["placeId"]],
-                             self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY, self.load())
+                             self.near[delivery["placeId"]], leg["car"]["premium"], pickup["privateAddress"], delivery["privateAddress"], post_at // DAY - self.first_day, self.load())
             # The fitted curve gives the share of gigs that a driver takes at a fee or below it: the steps of the schedule walk up it.
             paid, taken = 0.0, 0.0
             for step in [1.0] + [ratio for _, ratio in self.set["rise"]]:
@@ -528,11 +546,15 @@ class Desk:
     def day_limit(self) -> float:
         """The most cars that may be due on one day: if that day turns out to have few drivers, the week still keeps its on-time share."""
         seen = any(day >= self.now // DAY - 6 for day in self.short_days)
-        orders = self.set["guard_orders"]
+        orders = self.set["guard_orders"] * self.week_left()
         if self.set["guard_pace"] and self.week_share() >= 0.2:  # from Monday evening on, the week's own pace says how many orders it will have
             orders = min(orders, self.books.won_count / self.week_share())
         allowed_late = (1 - self.set["guard_on_time"]) * max(self.books.won_count, orders) - self.books.late_count - self.urgent()
         return allowed_late / (self.set["guard_loss_after"] if seen else self.set["guard_loss"])
+
+    def week_left(self) -> float:
+        """The share of the week's five request days that the desk plays: all of them, unless it joined late and counts its days from the join."""
+        return max(1, 5 - self.first_day) / 5
 
     def week_share(self) -> float:
         """The share of the week's request hours that have passed."""
