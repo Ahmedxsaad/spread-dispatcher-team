@@ -68,6 +68,9 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
 - A lower price when the car pairs with a waiting order: the pair seldom forms (`v10-pairquote`).
 - A level for each dealer (`d-sd*`), a price factor by lane length (`h-*`), a dearer same-day option (`o-fast*`), a flatter or steeper dealer curve (`k-*`).
 - Driver curves with products of their features: they rank orders better on paper (AUC 0.869 against 0.851) and make less in play (`v17b`, `n-*`).
+- Two beliefs about the day's price level each morning, an ordinary day and a price war day: €430 to €640 a week less than the single belief that starts from yesterday (`m-regimes*`).
+- A pickup window that ends before the last pickup minute, so that a drive that runs long still ends in time: no more cars on time, €120 to €235 a week less (`b-*`).
+- A lower minimum chance for private addresses (`pv-*`), and other shapes of the fee raises (`r-*`).
 
 ## What would break it
 
@@ -105,7 +108,7 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 | `desk/play.py`, `desk/live.py` | The loops: a practice world, and the live final |
 | `eval/` | The harness: fixed weeks, parallel runs, the log, the comparison |
 | `analysis/` | Fits the curves, scores the note reader |
-| `results/runs.csv` | One row for each week played: 3,968 weeks under 142 labels so far |
+| `results/runs.csv` | One row for each week played: 4,210 weeks under 148 labels so far |
 | `context/` | The challenge's rules, handbook and kits, and our first notes |
 
 ## Robustness

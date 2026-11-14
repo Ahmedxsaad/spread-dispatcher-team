@@ -13,7 +13,7 @@ from typing import IO, NamedTuple, Optional
 from . import notes
 from .books import Books
 from .clock import AWAKE, DAY, HOUR, LAST_REQUEST, awake_after, awake_before, awake_between, business_days_after, clock, cut, last_open, open_span
-from .market import Market
+from .market import Market, RegimeMarket
 from .model import FITTED, air_km, at_fee, drivers_near, gig_features, logistic
 
 SETTINGS = {
@@ -74,6 +74,7 @@ SETTINGS = {
     "pair_intro": [0, 1.0],  # the same for a pair
     "ladder": [[300, 1.3], [240, 1.6], [180, 2.0], [120, 2.5], [60, 3.0]],  # [awake minutes before the last booking, fee]
     "reach": 60,  # minutes that a driver needs from the booking to the pickup
+    "slack": [0, 0.0],  # [minutes, share of the drive]: a gig's pickup window ends this long before the last pickup minute, so a drive that runs long still ends in time
     # A day when drivers stay at home (flu, snow): they give their bookings back just after midnight. Seen in every week of level 7 and 8.
     "short_day_drops": 6,  # this many drops before 02:00 mark the day
     "short_day_steps": [[360, 1.15], [480, 1.35], [600, 1.6]],  # [minute of that day, fee]: the cars due that day go up early, while drivers still plan their day. Steeper steps cost more and gain nothing (sd-*)
@@ -84,6 +85,7 @@ SETTINGS = {
     "guard_orders": 350,  # the week's orders to count on, before that many are won
     "guard_loss": 0.25,  # the share of a day's cars that a day with few drivers makes late
     "guard_loss_after": 0.1,  # ... once the week's day with few drivers has come
+    "regimes": False,  # hold two beliefs about the day's level each morning: an ordinary day near the week's level, and a price war day
     "slope_scale": 1.0,  # a factor on the fitted slope of the dealer curve
     "dealer_sd": 0.0,  # how far a dealer's own level may lie from the day's, in the curve's units; 0: one level for all dealers
     "outages": False,  # look for the region where the competitor is down for a day, and price its dealers higher. Measured: found in 18 of 20 weeks, but mostly in the afternoon; no gain (v9-outage)
@@ -132,7 +134,7 @@ class Desk:
         self.limit_now = float("inf")
         self.spare_now = True
         self.pairable: list[dict] = []  # during one look: the waiting orders that can go in a pair
-        self.market = Market(level, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"])
+        self.market = (RegimeMarket if self.set["regimes"] else Market)(level, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"])
         self.tally: Counter = Counter()  # what the desk did with each request, for the day's report
         if self.set["explore"]:
             self.set["max_waiting"], self.set["max_urgent"] = self.set["explore_caps"][len(roster) % len(self.set["explore_caps"])], 10 ** 6
@@ -594,10 +596,10 @@ class Desk:
                     "manualLicence": facts.manual or "licence" in reasons}
         stage, until = self.stage(order)
         reference = self.reference_of([(order["id"], leg) for leg in legs])
-        action = {"type": "post", "stops": self.stops(order, legs, facts), "audience": audience, "schedule": self.fees(order, reference, stage, until)}
+        action = {"type": "post", "stops": self.stops(order, legs, facts, until if stage == 0 else None), "audience": audience, "schedule": self.fees(order, reference, stage, until)}
         self.send(action, at=self.now, order=order["id"], stage=stage, until=until)
 
-    def stops(self, order: dict, legs: list[int], facts: notes.Facts) -> list[dict]:
+    def stops(self, order: dict, legs: list[int], facts: notes.Facts, stage_until: Optional[int] = None) -> list[dict]:
         """A pickup and a delivery for each car. A stop has its own window only when the note or an
         earlier failed visit makes it narrower than the order's window."""
         stops = []
@@ -615,6 +617,13 @@ class Desk:
                 first["window"], second["window"] = windows
             elif start > pickup["window"]["from"]:
                 first["window"] = {"from": start, "to": max(start, pickup["window"]["to"])}
+            slack = max(self.set["slack"][0], self.set["slack"][1] * self.minutes[(pickup["placeId"], spec["delivery"]["placeId"])])
+            if slack and "window" not in first and "window" not in second and len(order["legs"]) == 1 and not pickup["privateAddress"] and stage_until is not None:
+                # The world lets a driver plan the pickup for the last minute. Real drives run longer than the map's, and a car that
+                # arrives after the site has closed counts the next morning.
+                end = int(stage_until - slack)
+                if end - max(start, self.now) >= 45:
+                    first["window"] = {"from": start, "to": end}
             if len(legs) > 1 and leg == legs[0] and spec["delivery"]["privateAddress"]:
                 # In a trade-in gig the world lets a driver bring the new car after the customer's booked hour. This window does not.
                 second["window"] = {"from": spec["delivery"]["window"]["from"], "to": spec["delivery"]["window"]["to"] + 25}

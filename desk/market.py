@@ -120,3 +120,92 @@ def fit_level(quotes: list, start: float) -> float:
             break
         level += max(-2.0, min(2.0, (sum(won for _, won in quotes) - sum(chances)) / slope))
     return level
+
+
+WEEKDAY = [-0.27, 0.25, 0.30, 0.04, -0.32]  # a weekday's level against the week's own, over 400 exploration days
+NORMAL_SD = 0.75  # how far an ordinary day lies from its week's level
+WAR = (-2.75, 0.5)  # a price war day: the competitor quotes 20% lower, which is this much on the curve, give or take
+WORLD_SD = 0.9  # how far a week's level lies from the level of all weeks
+
+
+class RegimeMarket(Market):
+    """The day's level as one of two kinds of day. An ordinary day lies near the week's own level,
+    which the desk learns over the week. A price war day lies 20% lower; a week has one. Each
+    morning the desk holds both beliefs, weighs them by how well they explain the dealers' answers,
+    and updates each by one step of Bayes. So a few quotes tell it which kind of day it is, and
+    the morning after a price war it does not start from the war's level."""
+
+    def __init__(self, level: int, **kwargs):
+        super().__init__(level, **kwargs)
+        self.week = [self.mean, WORLD_SD ** 2]  # the belief about the week's own level
+        self.kinds: list[list[float]] = []  # today's beliefs, ordinary then war: [weight, mean, variance]
+        self.war_seen = level < 8  # below level 8 there is no price war
+        self.day = -1
+
+    def start(self, day: int) -> None:
+        if self.kinds:  # what yesterday taught about the week
+            ordinary, war = self.kinds
+            if war[0] > 0.5:
+                self.war_seen = True
+            elif war[0] < 0.2:  # a day that could be either kind teaches nothing about the week
+                seen, noise = ordinary[1] - WEEKDAY[self.day % 7 % 5], NORMAL_SD ** 2 + ordinary[2]
+                gain = self.week[1] / (self.week[1] + noise)
+                self.week = [self.week[0] + gain * (seen - self.week[0]), self.week[1] * (1 - gain)]
+        self.day = day
+        left = max(1, 5 - day % 7)
+        war = 0.0 if self.war_seen or day % 7 > 4 else 1 / left
+        centre = self.week[0] + WEEKDAY[day % 7 % 5]
+        self.kinds = [[1 - war, centre, self.week[1] + NORMAL_SD ** 2], [war, centre + WAR[0], self.week[1] + WAR[1] ** 2]]
+        self.today = []
+
+    def weights(self, at: int) -> list[float]:
+        """A price war runs from 08:00 to 18:00: outside those hours every day is ordinary."""
+        if not self.kinds:
+            return []
+        if not 8 * HOUR <= at % DAY < 18 * HOUR:
+            return [1.0, 0.0]
+        return [kind[0] for kind in self.kinds]
+
+    @property
+    def mean(self) -> float:
+        return sum(kind[0] * kind[1] for kind in self.kinds) if getattr(self, "kinds", None) else self._mean
+
+    @mean.setter
+    def mean(self, value: float) -> None:
+        self._mean = value
+
+    @property
+    def var(self) -> float:
+        if not getattr(self, "kinds", None):
+            return self._var
+        mean = self.mean
+        return sum(kind[0] * (kind[2] + (kind[1] - mean) ** 2) for kind in self.kinds)
+
+    @var.setter
+    def var(self, value: float) -> None:
+        self._var = value
+
+    def chance(self, request: dict, markup: float, trust: int, only_later: bool, at: int = 0) -> float:
+        if not self.kinds or at // DAY != self.day:
+            self.start(at // DAY)
+        base = self.base(request, markup, trust, only_later)
+        return sum(weight * sigmoid((kind[1] + base) / math.sqrt(1 + math.pi * kind[2] / 8)) for weight, kind in zip(self.weights(at), self.kinds))
+
+    def learn(self, request: dict, markup: float, trust: int, only_later: bool, won: bool, day: int, at: int = 0) -> None:
+        if not self.kinds or day != self.day:
+            self.start(day)
+        base = self.base(request, markup, trust, only_later)
+        working = 8 * HOUR <= at % DAY < 18 * HOUR
+        for index, kind in enumerate(self.kinds):
+            if index == 1 and not working:
+                continue  # an answer outside the war's hours says nothing about a war
+            expected = sigmoid((kind[1] + base) / math.sqrt(1 + math.pi * kind[2] / 8))
+            if working:
+                kind[0] *= expected if won else 1 - expected
+            p = sigmoid(kind[1] + base)
+            precision = 1 / kind[2] + p * (1 - p)
+            kind[1] += (won - p) / precision
+            kind[2] = 1 / precision
+        total = sum(kind[0] for kind in self.kinds)
+        for kind in self.kinds:
+            kind[0] = kind[0] / total if total > 0 else 0.5
