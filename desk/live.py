@@ -15,7 +15,6 @@ from .clock import DAY, clock
 from .desk import Desk
 
 LOOK_EVERY = 0.4  # real seconds between two checks of the clock while events keep coming
-QUOTE_BY = 6  # world minutes before a request's deadline at which its quote goes out whatever the rhythm: 1.8 real seconds
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -47,7 +46,9 @@ def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
     """Reads the world's events as they come. The desk looks at its books in the rhythm of its practice weeks: at once
     after an event that cannot wait, and else every `tick` minutes of the world. Every setting was measured at that
     rhythm, so the final plays at it. On 80 fresh weeks a look every 10 minutes makes 127 a week less than every 12,
-    with a standard error of 138 (qt-10). A quote never waits past `QUOTE_BY` minutes before its deadline."""
+    with a standard error of 138 (qt-10). Quotes alone do not wait for the rhythm: a dealer decides 4.5 real seconds
+    after its request, whenever our quote came, so each request is answered at the next check of the clock. When
+    quotes waited for the look, a slow server made 0 to 5 of a week's 1,000 quotes late in rehearsals at the final's pace."""
     looked, day = 0.0, desk.now // DAY
     due, urgent = desk.now, True  # the first look comes at once
     for event in world.stream(after=desk.last_seq, idle=LOOK_EVERY):
@@ -58,9 +59,11 @@ def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
             desk.now = max(desk.now, safely(world_minute) or desk.now)
         if event is None or time.monotonic() - looked >= LOOK_EVERY:
             looked = time.monotonic()
-            if urgent or desk.now >= due or desk.quote_due(desk.now, QUOTE_BY):
+            if urgent or desk.now >= due:
                 look(world, desk)
                 due, urgent = min(desk.next_look(desk.now), (desk.now // DAY + 1) * DAY), False
+            elif desk.books.unquoted:
+                look(world, desk, quotes_only=True)
             if desk.now // DAY > day:
                 report(world, desk, day)
                 day = desk.now // DAY
@@ -68,10 +71,10 @@ def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
                 return
 
 
-def look(world: World, desk: Desk) -> None:
+def look(world: World, desk: Desk, quotes_only: bool = False) -> None:
     """One look at the books: decide, send, and read what the world did with each action."""
     try:
-        actions = desk.decide(desk.now)
+        actions = desk.decide(desk.now, quotes_only)
         if actions:
             desk.results(world.act(actions))
         if desk.needs_sync:  # the world refused a withdrawal: read its own list of our gigs

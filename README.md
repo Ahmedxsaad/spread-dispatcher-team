@@ -96,6 +96,9 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
 - A driver level learned during the week, as the dealers' level is: it predicts the next gigs worse than the fixed curve, because a quick booking is known at once and a gig without a driver only hours later.
 - A lower or a higher price factor with the new learner: €321 and €489 a week less (`qg-103`, `qg-109`).
 - A guard that counts on fewer orders when the week wins them at a slow pace: it changed 5 of 80 weeks and did not lift the lowest ones (`qp-pace`).
+- The week's two unannounced events as cases of their own: a price war day and an outage day in one region, each weighed by every answer (an idea from another team's public notes, built here from scratch). It foretells the next answer 3.1% better on the randomised weeks and makes €7 a week less in play, with a standard error of €99 (`qv-ev`).
+- A price factor that follows the market's level, lower in a week with a cheap competitor: 19 more orders in the cheapest quarter of weeks and no more margin; €202 a week less over all weeks (`gl-02`).
+- A tighter guard, 95% in the worst case: €477 a week less, on time 0.3 points up, the lowest week no higher (`gd-95`). And no risk budget at all: €578 less (`ab-nospare`).
 - A higher opening fee, 1.00, for the cars that book least easily. The randomised weeks, which had no fee raises before the last hours, said it would get more of them a driver in time. With our two raises it does not: €292 a week less, on time unchanged (`qh-75`).
 - A level for each dealer in the new learner: no gain, as before (`qd-03`).
 - The lower opening fee for other shares than 94 in 100. From 97 in 100: no gain. From 90 in 100: €59 a week, and one of 79 weeks falls to 89.3% on time. From 85 in 100: €111 a week less (`qe-97`, `qe-90`, `qe-85`). The randomised weeks say the same: below 94 in 100 a lower opening fee saves nothing.

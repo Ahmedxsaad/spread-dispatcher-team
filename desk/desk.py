@@ -13,13 +13,15 @@ from typing import IO, NamedTuple, Optional
 from . import notes
 from .books import Books
 from .clock import AWAKE, DAY, HOUR, LAST_REQUEST, awake_after, awake_before, awake_between, business_days_after, clock, cut, last_open, open_span
-from .market import Market, RegimeMarket
+from .market import EventMarket, Market, RegimeMarket
 from .model import FITTED, air_km, at_fee, drivers_near, gig_features, logistic
 
 SETTINGS = {
     "join_day": 0,  # practice only: the day on which the desk joins the week, with nothing done before it, as a test final does (Thursday: 3)
     # A desk that joins the week late, as in a test final: the driver curves count the days from the join, not from Monday, because its drivers
-    # are as free as on a Monday, and the guard counts on the orders of the days that are left. On 80 half weeks from Thursday the first part alone made 103 more (hw-days)
+    # are as free as on a Monday, and the guard counts on the orders of the days that are left. On 80 half weeks from Thursday the first part alone
+    # made 103 more (hw-days). With the guard's part every half week is ranked, where 1 in 80 is not without it, but a third of the orders and
+    # 2,336 of 6,475 euros are gone (hw-join). Off: a test final does not count.
     "days_from_join": False,
     "tick": 12,  # minutes between two looks at the world while requests can arrive; a request waits 15 minutes for its quote
     "seed": 1,
@@ -113,9 +115,20 @@ SETTINGS = {
     # So we never hold more cars due on one day than the week can afford to lose a quarter of.
     "guard_on_time": 0.94,  # the on-time share that the week must keep in the worst case. Measured on 40 weeks: worst week 91.3% without, 94.1% with, the margin unchanged (g94-x)
     "guard_orders": 350,  # the week's orders to count on, before that many are won
+    # Two rules for a week in which drivers are scarce from its start. In one ranking week the cars sat (42 without a driver on Monday night, where
+    # 37 is the most in 120 practice weeks), 25 of 241 were late by Wednesday, and then the day's limit let the desk quote 3 requests on Friday: ranked, and 18th.
+    "backlog_alarm": 0,  # this many cars without a driver at 06:00 mark the day as one with few drivers, as the night's drops do; 0: never
+    "guard_safe": 1.0,  # a car whose chance of a driver in time is at least this does not count against the day's limit: it raises the week's on-time share; 1.0: every car counts
+    "guard_spent_safe": 1.0,  # the same, but only once the week's allowance of late cars is spent: stopping then protects nothing, and a safe car still raises the on-time share; 1.0: never
+    "guard_ahead": False,  # count on more when the week wins orders at a faster pace: in the weeks with the dearest competitor the day's limit turns 62 options away, in the cheapest 9
     "guard_pace": False,  # count on fewer when the week wins orders at a slower pace: small weeks have the lowest on-time shares (120 weeks: 95.0% under 330 orders, 97.0% over 380)
     "guard_loss": 0.25,  # the share of a day's cars that a day with few drivers makes late
     "guard_loss_after": 0.1,  # ... once the week's day with few drivers has come
+    # The week's two unannounced events, a price war day and an outage day in one region, as cases that each answer weighs (desk/market.py).
+    # On 80 weeks with random prices: the next answer foretold 3.1% better than with the week's parts alone. In play, on 80 fresh weeks: 7 a week
+    # less (standard error 99), 4 orders fewer (qv-ev). Off: the wide belief of each morning already follows a war within a few answers.
+    "events": False,
+    "calm_sd": 0.7,  # how far a calm day's level lies from the day before, in the curve's units, when the events are cases of their own
     "regimes": False,  # hold two beliefs about the day's level each morning: an ordinary day near the week's level, and a price war day
     "slope_scale": 1.0,  # a factor on the fitted slope of the dealer curve
     "dealer_sd": 0.0,  # how far a dealer's own level may lie from the day's, in the curve's units; 0: one level for all dealers. No gain, also with the week's parts below (d-sd*, qd-03)
@@ -162,6 +175,8 @@ class Desk:
         self.free: dict[str, tuple[str, int]] = {}  # driver id -> (place, minute): they have just delivered there, and got no offer yet
         self.night_drops: Counter = Counter()  # day -> bookings given back before 02:00
         self.short_days: set[int] = set()  # the days when drivers stay at home
+        self.drop_days: set[int] = set()  # those of them that began with a night of dropped bookings: the week's one such day, which the guard waits for
+        self.mornings: set[int] = set()  # the days whose morning backlog has been looked at
         self.raised: set[str] = set()  # gigs that already got the short day's fees
         self.alone: set[str] = set()  # orders that go in a gig of their own from now on: their pair found no driver in time
         self.dropped: set[str] = set()  # gigs that a driver gave back since the last look
@@ -170,7 +185,8 @@ class Desk:
         self.limit_now = float("inf")
         self.spare_now = True
         self.pairable: list[dict] = []  # during one look: the waiting orders that can go in a pair
-        self.market = (RegimeMarket if self.set["regimes"] else Market)(level, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"],
+        kind, more = (RegimeMarket, {}) if self.set["regimes"] else (EventMarket, {"calm_sd": self.set["calm_sd"]}) if self.set["events"] else (Market, {})
+        self.market = kind(level, **more, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"],
                                                                            minutes=self.minutes, tilt=tuple(self.set["tilt"]), places=tuple(self.set["places"]))
         self.tally: Counter = Counter()  # what the desk did with each request, for the day's report
         if self.set["explore"]:
@@ -223,6 +239,7 @@ class Desk:
             self.night_drops[day] += 1
             if self.night_drops[day] == self.set["short_day_drops"]:
                 self.short_days.add(day)
+                self.drop_days.add(day)
                 print(f"{clock(event['at'])} {self.night_drops[day]} drivers gave their bookings back in the night: a day with few drivers")
         elif kind == "offer_answered":
             print(f"answer: {json.dumps({'at': event['at'], 'gig': event['gigId'], 'driver': event['driverId'], 'answer': event['answer']})}")
@@ -286,18 +303,23 @@ class Desk:
         books.unquoted = [request["id"] for request in snapshot["openRequests"]]
         self.sent, self.meta, self.outbox = ([], []), [], []
 
-    def decide(self, now: int) -> list[dict]:
-        """The actions for this minute. Their results go to `results` before the next events."""
+    def decide(self, now: int, quotes_only: bool = False) -> list[dict]:
+        """The actions for this minute. Their results go to `results` before the next events. With `quotes_only`
+        the desk only answers the requests that wait: in the final a quote does not wait for the next look."""
         self.now = now
-        self.replan()
-        self.quote_requests()
-        self.review_open_gigs()
-        self.post_free_cars()
-        self.raise_for_short_day()
-        if self.set["offers"]:
-            self.offer_to_free_drivers()
-        if self.set["viewer_offers"][0]:
-            self.offer_to_viewers()
+        if quotes_only:
+            self.quote_requests()
+        else:
+            self.replan()
+            self.watch_backlog()
+            self.quote_requests()
+            self.review_open_gigs()
+            self.post_free_cars()
+            self.raise_for_short_day()
+            if self.set["offers"]:
+                self.offer_to_free_drivers()
+            if self.set["viewer_offers"][0]:
+                self.offer_to_viewers()
         actions, self.outbox = self.outbox, []
         self.sent, self.meta = (actions, self.meta), []
         return actions
@@ -329,10 +351,6 @@ class Desk:
         if self.set["viewer_offers"][0] and AWAKE[0] <= now % DAY < AWAKE[1] and any(gig.status == "open" for gig in self.books.gigs.values()):
             waits.append(now + 30)  # an offer is open for 10 minutes: look again soon, for the next viewers
         return min([now + 3 * HOUR] + waits)
-
-    def quote_due(self, now: int, minutes: int) -> bool:
-        """A request waits for our quote and its dealer decides within `minutes`: the quote cannot wait for the next look."""
-        return any(self.books.requests[request_id]["respondBy"] - now <= minutes for request_id in self.books.unquoted if request_id in self.books.requests)
 
     def wake_on(self, now: int) -> list[str]:
         """The events that cannot wait for the next look. At night, a price request is one."""
@@ -409,7 +427,8 @@ class Desk:
             if plan is None:
                 self.tally["options without a driver in time"] += 1
                 continue
-            if self.due_now[plan.until // DAY] + 1 > self.limit_now:
+            safe = min(self.set["guard_safe"], self.set["guard_spent_safe"]) if self.limit_now <= 0 else self.set["guard_safe"]  # a limit of zero or less: the allowance is spent
+            if self.due_now[plan.until // DAY] + 1 > self.limit_now and plan.chance < safe:
                 self.tally["options over the day's limit"] += 1
                 continue
             if self.set["pairs"] and self.set["pair_quotes"] and self.level >= 4:
@@ -545,10 +564,12 @@ class Desk:
 
     def day_limit(self) -> float:
         """The most cars that may be due on one day: if that day turns out to have few drivers, the week still keeps its on-time share."""
-        seen = any(day >= self.now // DAY - 6 for day in self.short_days)
+        seen = any(day >= self.now // DAY - 6 for day in self.drop_days)  # a morning with many cars waiting does not count: the night of drops may still come
         orders = self.set["guard_orders"] * self.week_left()
         if self.set["guard_pace"] and self.week_share() >= 0.2:  # from Monday evening on, the week's own pace says how many orders it will have
             orders = min(orders, self.books.won_count / self.week_share())
+        if self.set["guard_ahead"] and self.week_share() >= 0.2:
+            orders = max(orders, self.books.won_count / self.week_share())
         allowed_late = (1 - self.set["guard_on_time"]) * max(self.books.won_count, orders) - self.books.late_count - self.urgent()
         return allowed_late / (self.set["guard_loss_after"] if seen else self.set["guard_loss"])
 
@@ -826,6 +847,17 @@ class Desk:
         if not minutes or ratio >= 1 or self.level == 1 or back >= ladder_from:
             return fee, []
         return fee * ratio, [(back, fee)]
+
+    def watch_backlog(self) -> None:
+        """In the morning, many cars that still wait for a driver say that drivers are few today, whatever the reason."""
+        day = self.now // DAY
+        if not self.set["backlog_alarm"] or day % 7 > 4 or self.now % DAY < 6 * HOUR or day in self.mornings:
+            return
+        self.mornings.add(day)
+        waiting = len(self.books.waiting())
+        if waiting >= self.set["backlog_alarm"] and day not in self.short_days:
+            self.short_days.add(day)
+            print(f"{clock(self.now)} {waiting} cars wait for a driver this morning: a day with few drivers")
 
     def raise_for_short_day(self) -> None:
         """On a day when drivers stay at home, the cars that are due that day and have no driver get

@@ -146,6 +146,108 @@ def fit_level(quotes: list, start: float) -> float:
     return level
 
 
+WAR_STEP = math.log(0.8)  # on the day of its price war the competitor quotes 20% under its prices: this much on the log of the price
+OUTAGE_STEP = math.log(1.3)  # the backup of a region where the competitor is down costs about 30% more
+SURE = 0.4  # no case weighs more than this before the day's first answer: the desk may have missed the event on an earlier day
+
+
+class EventMarket(Market):
+    """The day's level with the week's two unannounced events. A week of level 8 has one price war day, when the
+    competitor quotes 20% lower everywhere, and one outage day, when it is down in one region and the dealers
+    there pay a backup that is 30% dearer: both from 08:00 to 18:00, and not on the same day. Each morning the
+    desk holds one belief about the day's level for each case: a calm day, the war, or the outage around each
+    town. Each answer weighs the cases by how well they foretold it, and moves each case's level by one step of
+    Bayes. A price is judged against the mix. So a war or an outage shows after a handful of answers, and the
+    level of a calm day, from which the next morning starts, is not dragged along by it."""
+
+    def __init__(self, level: int, calm_sd: float = 0.7, **kwargs):
+        areas = kwargs.get("regions") or {}
+        super().__init__(level, **{**kwargs, "outages": False})
+        self.day_var = calm_sd ** 2  # a calm day strays less from the day before than a day that may hold an event
+        self.areas = areas  # town -> the places within 80 km of it
+        self.war_left, self.outage_left = level >= 8, level >= 6  # each comes once a week
+        self.cases: list[list] = []  # today's cases: [weight, mean of the level, its variance, "calm", "war" or the town of the outage]
+        self.day = -1
+        self.asked: tuple = ()  # the last request whose cases were laid out, and that layout: a price is judged many times for one request
+
+    def mix(self) -> tuple[float, float]:
+        """The level of a calm day over today's cases: its mean and its variance."""
+        total = sum(case[0] for case in self.cases)
+        mean = sum(case[0] * case[1] for case in self.cases) / total
+        return mean, sum(case[0] * (case[2] + (case[1] - mean) ** 2) for case in self.cases) / total
+
+    def start(self, day: int) -> None:
+        """A new day: what yesterday was, the level of a calm day carried over, and today's cases."""
+        if self.cases:
+            total = sum(case[0] for case in self.cases)
+            if sum(case[0] for case in self.cases if case[3] == "war") > total / 2:
+                self.war_left = False
+            if sum(case[0] for case in self.cases if case[3] not in ("calm", "war")) > total / 2:
+                self.outage_left = False
+            self.mean, self.var = self.mix()
+            self.var += self.day_var * (day - self.day)
+            for belief in self.dealers.values():
+                belief[1] = min(self.dealer_sd ** 2, belief[1] + (self.dealer_sd / 2) ** 2)
+            for (part, _), belief in self.parts.items():
+                sd, keep = self.own[part]
+                belief[0], belief[1] = belief[0] * keep, keep ** 2 * belief[1] + (1 - keep ** 2) * sd ** 2
+        self.day, self.asked = day, ()
+        working, left = day % 7 < 5, max(1, 5 - day % 7)
+        war = min(SURE, 1 / left) if self.war_left and working else 0.0
+        outage = min(SURE, 1 / left) * (1 - war) if self.outage_left and working and self.areas else 0.0
+        self.cases = [[1 - war - outage, self.mean, self.var, "calm"]]
+        if war:
+            self.cases.append([war, self.mean, self.var, "war"])
+        if outage:
+            self.cases += [[outage / len(self.areas), self.mean, self.var, town] for town in self.areas]
+
+    def shifts(self, request: dict) -> list[float]:
+        """What each of today's cases adds to the level for this request."""
+        if not 8 * HOUR <= request["arrivedAt"] % DAY < 18 * HOUR:
+            return [0.0] * len(self.cases)
+        pickup = request["legs"][0]["pickup"]["placeId"]
+        return [0.0 if kind == "calm" else self.slope * WAR_STEP if kind == "war" else self.slope * OUTAGE_STEP if pickup in self.areas[kind] else 0.0 for _, _, _, kind in self.cases]
+
+    def chance(self, request: dict, markup: float, trust: int, only_later: bool, at: int = 0) -> float:
+        if request["arrivedAt"] // DAY > self.day:
+            self.start(request["arrivedAt"] // DAY)
+        if not self.asked or self.asked[0] != request["id"]:
+            own = self.of_week(request)
+            total = sum(case[0] for case in self.cases)
+            doubt = self.of_dealer(request)[1] + sum(belief[1] * weight ** 2 for belief, weight in own)
+            rest = self.of_dealer(request)[0] + sum(belief[0] * weight for belief, weight in own)
+            self.asked = (request["id"], [(case[0] / total, case[1] + shift + rest, math.sqrt(1 + math.pi * (case[2] + doubt) / 8)) for case, shift in zip(self.cases, self.shifts(request))])
+        base = self.base(request, markup, trust, only_later)
+        return sum(weight * sigmoid((level + base) / flat) for weight, level, flat in self.asked[1])
+
+    def learn(self, request: dict, markup: float, trust: int, only_later: bool, won: bool, day: int, at: int = 0) -> None:
+        if request["arrivedAt"] // DAY > self.day:
+            self.start(request["arrivedAt"] // DAY)
+        dealer = self.dealers.setdefault(request["dealerId"], [0.0, self.dealer_sd ** 2])
+        live = [(dealer, 1.0)] + self.of_week(request)
+        rest = sum(belief[0] * weight for belief, weight in live) + self.base(request, markup, trust, only_later)
+        doubt = sum(belief[1] * weight ** 2 for belief, weight in live)
+        moves = []
+        for case, shift in zip(self.cases, self.shifts(request)):
+            score = case[1] + shift + rest
+            foretold = sigmoid(score / math.sqrt(1 + math.pi * (case[2] + doubt) / 8))
+            case[0] *= foretold if won else 1 - foretold  # the case that foretold the answer better weighs more
+            p = sigmoid(score)
+            step = (won - p) / (1 + (case[2] + doubt) * p * (1 - p))
+            shrink = p * (1 - p) / (1 + (case[2] + doubt) * p * (1 - p))
+            case[1], case[2] = case[1] + case[2] * step, case[2] * (1 - case[2] * shrink)
+            moves.append((step, shrink))
+        total = sum(case[0] for case in self.cases) or 1.0
+        for case in self.cases:
+            case[0] /= total
+        step = sum(case[0] * move[0] for case, move in zip(self.cases, moves))
+        shrink = sum(case[0] * move[1] for case, move in zip(self.cases, moves))
+        for belief, weight in live:  # the week's parts move by the step of the mix
+            belief[0], belief[1] = belief[0] + belief[1] * weight * step, belief[1] * (1 - belief[1] * weight ** 2 * shrink)
+        self.mean, self.var = self.mix()
+        self.asked = ()
+
+
 WEEKDAY = [-0.27, 0.25, 0.30, 0.04, -0.32]  # a weekday's level against the week's own, over 400 exploration days
 NORMAL_SD = 0.75  # how far an ordinary day lies from its week's level
 WAR = (-2.75, 0.5)  # a price war day: the competitor quotes 20% lower, which is this much on the curve, give or take
