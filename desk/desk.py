@@ -59,6 +59,7 @@ SETTINGS = {
     "pair_hop": 60,  # road minutes at most from the first car's delivery to the second car's pickup
     "pair_back": 120,  # ... and from the second car's delivery back to the first car's pickup. The way back may be longer than the hop (p-hop*)
     "pair_fee": 0.75,  # the pair's fee, over the sum of the two typical fees
+    "pair_noted": False,  # also pair cars whose dealer note sets hours when all four stops fit on the same day
     "pair_wait": 90,  # minutes at most that the driver waits for the second car to be ready
     # A car that we post alone is mostly booked within minutes, and then a return car that we win an hour later has no partner.
     # So a new car that could go in a pair stays off the app for a while, as long as requests still arrive and its pickup is far.
@@ -685,7 +686,7 @@ class Desk:
         leg = order["legs"][0]
         if (len(order["legs"]) != 1 or order["deliveredAt"][0] is not None or order["id"] in self.alone or self.hold.get(order["id"], 0) > self.now
                 or leg["pickup"]["privateAddress"] or leg["delivery"]["privateAddress"] or leg["car"]["premium"]
-                or self.noted(facts) or facts.ready_at is not None or self.books.failed.get((order["id"], 0))):
+                or ((self.noted(facts) or facts.ready_at is not None) and not self.set["pair_noted"]) or self.books.failed.get((order["id"], 0))):
             return False
         stage, until = self.stage(order)
         if stage != 0 or self.on_ladder(until) or until // DAY in self.short_days:
@@ -708,7 +709,43 @@ class Desk:
         start = max(self.now + 90, X["pickup"]["window"]["from"], Y["pickup"]["window"]["from"] - there - self.set["pair_wait"])
         if until - start < 2 * HOUR or self.on_ladder(until):
             return None
+        if self.set["pair_noted"]:
+            facts = [self.facts.get(order["id"]) or notes.Facts() for order in (x, y)]
+            if any(self.noted(fact) or fact.ready_at is not None for fact in facts):
+                until = self.noted_pair_until(x, y, facts, hop, until)
+                if until is None:
+                    return None
         return hop + back, until
+
+    def noted_pair_until(self, x: dict, y: dict, facts: list, hop: int, until: int) -> Optional[int]:
+        """Last departure that fits all four posted windows and site hours in one uninterrupted working day."""
+        intervals = []
+        elapsed = 0
+        for order, fact in zip((x, y), facts):
+            leg = self.real(order["legs"][0], fact)
+            stops = self.stops(order, [0], fact)
+            for kind, stop in zip(("pickup", "delivery"), stops):
+                site = leg[kind]
+                window = stop.get("window", site["window"])
+                lower = max(window["from"], fact.ready_at or 0) if kind == "pickup" else window["from"]
+                upper = min(window["to"], order["deadline"], fact.deliver_by or order["deadline"])
+                intervals.append((site["hours"], lower, upper, elapsed))
+                if kind == "pickup":
+                    elapsed += self.minutes[(leg["pickup"]["placeId"], leg["delivery"]["placeId"])] + 40 * self.charging(leg)
+            if order is x:
+                elapsed += hop + 30 * int(facts[1].plates)
+        for day in range(self.now // DAY, until // DAY + 1):
+            lower, upper = self.now + 90, until
+            for hours, start, end, offset in intervals:
+                span = open_span(hours, day)
+                if span is None:
+                    break
+                lower = max(lower, max(start, span[0]) - offset)
+                upper = min(upper, min(end, span[1] - 1) - offset)
+            else:
+                if upper - lower >= 2 * HOUR and not self.on_ladder(upper):
+                    return upper
+        return None
 
     def pair_up(self) -> set[str]:
         """Puts waiting orders in pairs, the pair with the least extra driving first. Returns the orders it paired."""
@@ -719,9 +756,11 @@ class Desk:
                 for x, y in ((a, b), (b, a)):
                     plan = self.pair_plan(x, y)
                     if plan:
-                        plans.append((plan[0], x["id"], y["id"], plan[1]))
+                        # First preserve the ordinary pairs that the desk already finds.
+                        noted = self.set["pair_noted"] and any(self.noted(f) or f.ready_at is not None for f in (self.facts.get(o["id"]) or notes.Facts() for o in (x, y)))
+                        plans.append((noted, plan[0], x["id"], y["id"], plan[1]))
         paired: set[str] = set()
-        for _, x_id, y_id, until in sorted(plans):
+        for _, _, x_id, y_id, until in sorted(plans):
             if x_id in paired or y_id in paired:
                 continue
             paired.update((x_id, y_id))
