@@ -56,6 +56,7 @@ SETTINGS = {
     # Two cars in one gig, when the second starts near where the first ends and ends near where the first starts: the driver
     # needs no trip to a pickup and no trip home, so the gig costs less than the two cars alone
     "pairs": True,
+    "cost_lane_anchor": 0.0,  # the same shrink for the fee that the desk expects to pay when it prices the car: the published typical fee has fresh noise for each request, the lane's usual fee has not
     "fee_lane_anchor": 0.0,  # shrink solo fees toward the usual fee for the lane, at most 10% either way
     "pair_hop": 60,  # road minutes at most from the first car's delivery to the second car's pickup
     "pair_back": 120,  # ... and from the second car's delivery back to the first car's pickup. The way back may be longer than the hop (p-hop*)
@@ -503,7 +504,7 @@ class Desk:
             return None
         if until // DAY in self.short_days and not self.set["short_day_quotes"] and not (self.set["alarm_quotes"] and until // DAY not in self.drop_days):
             return None  # few drivers work today: no new car that needs one today
-        return self.best_fee(leg, request["referenceFeeCents"], post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"]))
+        return self.best_fee(leg, self.anchored(request, self.set["cost_lane_anchor"]), post_at, until, self.late_cost(request["dealerId"], option["listPriceCents"]))
 
     def plan_trade_in(self, request: dict, option: dict, post_at: int) -> Optional[Plan]:
         """A trade-in goes as one gig at one fee: the new car to the customer inside the booked hour,
@@ -675,16 +676,20 @@ class Desk:
         orders = {order_id for order_id, _ in legs}
         if self.set["fee_lane_anchor"] and len(legs) == 1:
             request = self.books.requests[legs[0][0]]
-            leg = request["legs"][0]
-            if len(request["legs"]) == 1 and not (leg["car"]["premium"] or leg["pickup"]["privateAddress"] or leg["delivery"]["privateAddress"]):
-                if self.fee_lanes is None:
-                    self.fee_lanes = json.loads((Path(__file__).parent / "fee_lanes.json").read_text())
-                lane = f'{leg["pickup"]["placeId"]}>{leg["delivery"]["placeId"]}'
-                raw = request["referenceFeeCents"]
-                factor = max(0.90, min(1.10, self.fee_lanes.get(lane, raw) / raw))
-                return raw * (1 + self.set["fee_lane_anchor"] * (factor - 1))
+            if len(request["legs"]) == 1:
+                return self.anchored(request, self.set["fee_lane_anchor"])
         total = sum(self.books.requests[order_id]["referenceFeeCents"] * sum(1 for key in legs if key[0] == order_id) / len(self.books.requests[order_id]["legs"]) for order_id in orders)
         return total * (self.set["pair_fee"] if len(orders) > 1 else 1.0)
+
+    def anchored(self, request: dict, weight: float) -> float:
+        """The typical fee of an ordinary single car, moved towards the usual fee of its lane by `weight`, at most 10% either way."""
+        leg, raw = request["legs"][0], request["referenceFeeCents"]
+        if not weight or leg["car"]["premium"] or leg["pickup"]["privateAddress"] or leg["delivery"]["privateAddress"]:
+            return raw
+        if self.fee_lanes is None:
+            self.fee_lanes = json.loads((Path(__file__).parent / "fee_lanes.json").read_text())
+        factor = max(0.90, min(1.10, self.fee_lanes.get(f'{leg["pickup"]["placeId"]}>{leg["delivery"]["placeId"]}', raw) / raw))
+        return raw * (1 + weight * (factor - 1))
 
     def on_ladder(self, until: int) -> bool:
         """The last pickup is so near that the fee is on the ladder."""
