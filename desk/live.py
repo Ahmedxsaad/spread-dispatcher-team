@@ -21,7 +21,7 @@ LOOK_EVERY = 0.4  # real seconds between two checks of the clock while events ke
 QUICK = 4.0  # real seconds that a request in play waits for an answer: a quote that is older is late anyway. The kit waits 20
 JOIN = 20.0  # ... and while the desk joins a world, whose history is a long answer
 CLOCK = 2.0  # ... and for the clock, which is asked again at once
-SILENCE = (3.0, 10.0)  # real seconds without an event before the stream is opened again: by day, when drivers look at gigs many times a second, and at other hours
+SILENCE = (3.0, 10.0)  # real seconds without an event before the stream is opened again: in the hours of the requests, when events come many times a second, and at other hours
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -171,7 +171,7 @@ def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
                         day = desk.now // DAY
                     if desk.now >= desk.ends_at:
                         return
-                by_day = desk.now // DAY % 7 < 5 and 7 * 60 <= desk.now % DAY < 21 * 60
+                by_day = desk.now // DAY < 5 and 8 * 60 + 15 <= desk.now % DAY < 18 * 60  # the hours in which dealers send requests: about one a second, and drivers look at gigs
                 if time.monotonic() - heard > SILENCE[0 if by_day else 1]:
                     if by_day:
                         print(f"{clock(desk.now)} the stream is silent: opening it again", flush=True)
