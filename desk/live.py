@@ -21,6 +21,7 @@ LOOK_EVERY = 0.4  # real seconds between two checks of the clock while events ke
 QUICK = 4.0  # real seconds that a request in play waits for an answer: a quote that is older is late anyway. The kit waits 20
 JOIN = 20.0  # ... and while the desk joins a world, whose history is a long answer
 CLOCK = 2.0  # ... and for the clock, which is asked again at once
+SILENCE = (3.0, 10.0)  # real seconds without an event before the stream is opened again: by day, when drivers look at gigs many times a second, and at other hours
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -142,27 +143,43 @@ def follow(world: World, desk: Desk, world_minute: Callable[[], int]) -> None:
     quotes waited for the look, a slow server made 0 to 5 of a week's 1,000 quotes late in rehearsals at the final's pace."""
     looked, day = 0.0, desk.now // DAY
     due, urgent = desk.now, True  # the first look comes at once
-    for event in world.stream(after=desk.last_seq, idle=LOOK_EVERY):
-        if event is not None:
-            safely(desk.on_event, event)
-            urgent = urgent or event["kind"] in desk.wake_on(desk.now)
-        elif desk.now < desk.ends_at:
-            try:
-                desk.now = max(desk.now, safely(world_minute) or desk.now)
-            except Unreachable as error:  # the clock can wait for the next check: the events carry the minute too
-                print(f"{clock(desk.now)} no answer to the clock: {str(error)[:90]}", flush=True)
-        if event is None or time.monotonic() - looked >= LOOK_EVERY:
-            looked = time.monotonic()
-            if urgent or desk.now >= due:
-                look(world, desk)
-                due, urgent = min(desk.next_look(desk.now), (desk.now // DAY + 1) * DAY), False
-            elif desk.books.unquoted:
-                look(world, desk, quotes_only=True)
-            if desk.now // DAY > day:
-                report(world, desk, day)
-                day = desk.now // DAY
-            if desk.now >= desk.ends_at:
-                return
+    while True:
+        # The kit's stream says "no event" for as long as nothing comes, also when its connection has died without a
+        # word, as connections do on a network that drops. A live world is never silent for long: after a few seconds
+        # without an event the desk opens the stream again from its last event, which misses nothing.
+        stream, heard = world.stream(after=desk.last_seq, idle=LOOK_EVERY), time.monotonic()
+        try:
+            for event in stream:
+                if event is not None:
+                    heard = time.monotonic()
+                    safely(desk.on_event, event)
+                    urgent = urgent or event["kind"] in desk.wake_on(desk.now)
+                elif desk.now < desk.ends_at:
+                    try:
+                        desk.now = max(desk.now, safely(world_minute) or desk.now)
+                    except Unreachable as error:  # the clock can wait for the next check: the events carry the minute too
+                        print(f"{clock(desk.now)} no answer to the clock: {str(error)[:90]}", flush=True)
+                if event is None or time.monotonic() - looked >= LOOK_EVERY:
+                    looked = time.monotonic()
+                    if urgent or desk.now >= due:
+                        look(world, desk)
+                        due, urgent = min(desk.next_look(desk.now), (desk.now // DAY + 1) * DAY), False
+                    elif desk.books.unquoted:
+                        look(world, desk, quotes_only=True)
+                    if desk.now // DAY > day:
+                        report(world, desk, day)
+                        day = desk.now // DAY
+                    if desk.now >= desk.ends_at:
+                        return
+                by_day = desk.now // DAY % 7 < 5 and 7 * 60 <= desk.now % DAY < 21 * 60
+                if time.monotonic() - heard > SILENCE[0 if by_day else 1]:
+                    if by_day:
+                        print(f"{clock(desk.now)} the stream is silent: opening it again", flush=True)
+                    break
+            else:
+                return  # the stream ended: the world was deleted
+        finally:
+            stream.close()
 
 
 def look(world: World, desk: Desk, quotes_only: bool = False) -> None:
