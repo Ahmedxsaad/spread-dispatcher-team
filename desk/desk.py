@@ -38,6 +38,7 @@ SETTINGS = {
     "trust_late": 1.0,  # how much of the trust that a late car loses counts in its cost
     "win_share": 0.4,  # the share of a dealer's later requests that we expect to win
     "min_profit": 200,  # cents: no price for an option that is expected to make less
+    "learn_fastest": False,  # learn wins and losses from the issued markup of the fastest option we offered
     "fast_factor": 1.0,  # a factor on the price of the fastest option when we also offer a later one: later options leave us more per car
     "drop_bump": 1.0,  # after a driver gives a gig back, its fee starts again at the fee that was booked times this
     "greed_short": [0, 1.06],  # [drive minutes, factor]: lanes up to this length have their own factor
@@ -171,6 +172,13 @@ class Plan(NamedTuple):
     paid: float = 0.0  # the fee that we expect to pay, in cents: the part of `cost` without the late car's cost
 
 
+class Asked(NamedTuple):
+    minimum: float
+    trust: int
+    only_later: bool
+    fastest: Optional[float] = None  # issued markup, recorded only for quotes made with learn_fastest
+
+
 class Desk:
     def __init__(self, level: int, config: Optional[dict], world_map: dict, roster: list[dict], now: int, ends_at: int):
         unknown = set(config or {}) - set(SETTINGS)
@@ -206,7 +214,7 @@ class Desk:
         if self.set["explore"]:
             self.set["max_waiting"], self.set["max_urgent"] = self.set["explore_caps"][len(roster) % len(self.set["explore_caps"])], 10 ** 6
         self.plans: dict[str, dict[str, Plan]] = {}  # request id -> option -> the plan behind our price
-        self.asked: dict[str, tuple[float, int, bool]] = {}  # request id -> (lowest markup, the dealer's trust, only later options) of our quote
+        self.asked: dict[str, Asked] = {}
         self.facts: dict[str, notes.Facts] = {}  # request id -> what its note says
         self.judging: set[str] = set()  # requests with a quote that the dealer has not judged yet
         self.hold: dict[str, int] = {}  # order id -> no new gig before this minute, after the world refused one
@@ -281,7 +289,7 @@ class Desk:
                     if "night" in entry:
                         self.nights[int(entry["night"])] = int(entry["waiting"])
                         continue
-                    self.asked[entry["request"]] = tuple(entry["asked"])
+                    self.asked[entry["request"]] = Asked(*entry["asked"], fastest=entry.get("fastest_markup"))
                     self.plans[entry["request"]] = {kind: Plan(fee, 0.95, 0.0, 0) for kind, fee in entry["fees"].items()}
                 except (ValueError, KeyError, TypeError):
                     continue  # a line cut off by a crash
@@ -477,9 +485,16 @@ class Desk:
         self.tally["quoted"] += 1
         self.plans[request["id"]] = plans
         self.due_now[next(iter(plans.values())).until // DAY] += 0.6
-        self.asked[request["id"]] = (min(markups), trust, options[0]["kind"] not in prices)
+        fastest = None
+        if self.set["learn_fastest"]:
+            option = next(option for option in options if option["kind"] in prices)
+            fastest = prices[option["kind"]] / option["listPriceCents"]
+        asked = self.asked[request["id"]] = Asked(min(markups), trust, options[0]["kind"] not in prices, fastest)
         if self.journal:
-            self.journal.write(json.dumps({"request": request["id"], "asked": self.asked[request["id"]], "fees": {kind: plan.fee for kind, plan in plans.items()}}) + "\n")
+            entry = {"request": request["id"], "asked": asked[:3], "fees": {kind: plan.fee for kind, plan in plans.items()}}
+            if fastest is not None:
+                entry["fastest_markup"] = fastest
+            self.journal.write(json.dumps(entry) + "\n")
         return prices
 
     def plan(self, request: dict, option: dict, post_at: int) -> Optional[Plan]:
@@ -657,11 +672,13 @@ class Desk:
         asked, request = self.asked.pop(request_id, None), self.books.requests.get(request_id)
         if asked is None or request is None:
             return
-        markup, trust, only_later = asked
-        if order is not None:  # the dealer took this option at this price
+        markup = asked.minimum
+        if asked.fastest is not None:
+            markup = asked.fastest
+        elif order is not None:  # legacy quotes learned wins from the option the dealer took
             lists = {option["kind"]: option["listPriceCents"] for option in request["options"]}
             markup = order["priceCents"] / lists[order["option"]]
-        self.market.learn(request, markup, trust, only_later, order is not None, at // DAY, at)
+        self.market.learn(request, markup, asked.trust, asked.only_later, order is not None, at // DAY, at)
 
     # --- gigs ---
 
