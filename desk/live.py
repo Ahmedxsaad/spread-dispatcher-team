@@ -12,6 +12,7 @@ import traceback
 from pathlib import Path
 from typing import Callable, Optional
 
+import spread.stream
 from spread.client import Client, SpreadError, Unreachable, World
 
 from .clock import DAY, clock
@@ -21,6 +22,7 @@ LOOK_EVERY = 0.4  # real seconds between two checks of the clock while events ke
 QUICK = 4.0  # real seconds that a request in play waits for an answer: a quote that is older is late anyway. The kit waits 20
 JOIN = 20.0  # ... and while the desk joins a world, whose history is a long answer
 CLOCK = 2.0  # ... and for the clock, which is asked again at once
+STREAM = 5.0  # real seconds that the kit's stream may wait for its handshake or for the rest of a frame; the kit's own limit is 300
 SILENCE = (3.0, 10.0)  # real seconds without an event before the stream is opened again: in the hours of the requests, when events come many times a second, and at other hours
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -106,6 +108,10 @@ def play_live(world: World, level: int, config: Optional[dict] = None, journal_f
     """Plays a world whose clock moves by itself until the world ends. `world_minute` reads the
     clock when no event comes; by default it asks for the final's clock."""
     remember_names()
+    # The silence check below runs only when the kit's stream hands something back. A handshake that stalls, or a frame
+    # that stops half way, would hold the desk inside the kit for up to five minutes. With this limit the kit gives up
+    # after seconds, and its own loop opens the stream again from the last whole event.
+    spread.stream.QUIET_LIMIT = STREAM
     client = world.client
     if world_minute is None:  # the final's clock
         watch = Client()
