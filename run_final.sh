@@ -4,7 +4,7 @@
 #   ./run_final.sh
 # Only one copy runs at a time on this machine, from whichever folder: a second one would send every quote and gig twice.
 mkdir -p results/logs/final
-exec 9> "${TMPDIR:-/tmp}/spread-run-final.lock"
+exec 9> "$HOME/.spread-run-final.lock"
 if ! flock -n 9; then
     echo "Another run_final.sh is already running on this machine. This one stops."
     exit 1
