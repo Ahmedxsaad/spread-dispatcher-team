@@ -115,6 +115,7 @@ SETTINGS = {
     "short_day_quotes": False,  # on such a day, still price the options that need a pickup today
     # The guard of the delivery minimum: on the day when drivers stay at home, up to a quarter of the cars due that day are late.
     # So we never hold more cars due on one day than the week can afford to lose a quarter of.
+    "guard_zero": False,  # treat numerical roundoff at the exact late allowance as a spent budget
     "guard_on_time": 0.94,  # the on-time share that the week must keep in the worst case. Measured on 40 weeks: worst week 91.3% without, 94.1% with, the margin unchanged (g94-x)
     "guard_orders": 350,  # the week's orders to count on, before that many are won
     # Two rules for a week in which drivers are scarce from its start. In one ranking week the cars sat (42 without a driver on Monday night, where
@@ -609,6 +610,8 @@ class Desk:
             orders = max(orders, self.books.won_count / self.week_share())
         target = self.set["guard_early"][0] if early and self.set["guard_early"][0] else self.set["guard_on_time"]
         allowed_late = (1 - target) * max(self.books.won_count, orders) - self.books.late_count - self.urgent()
+        if self.set["guard_zero"] and abs(allowed_late) < 1e-9:
+            allowed_late = 0.0
         loss = self.set["guard_loss_after"] if seen else self.set["guard_calm"][0] if self.set["guard_calm"][0] and self.calm() else self.set["guard_loss"]
         if later and self.set["guard_loss_later"]:
             loss = min(loss, self.set["guard_loss_later"])
