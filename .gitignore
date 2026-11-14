@@ -9,3 +9,5 @@ results/logs/
 results/.open/
 reveal-*/
 results/journal/
+# Addresses and other facts of this machine's own setup.
+*.local.md

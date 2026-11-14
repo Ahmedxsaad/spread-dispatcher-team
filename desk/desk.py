@@ -47,6 +47,7 @@ SETTINGS = {
     "greed_slope": 0.0,  # how much the factor rises for each unit of the day's level above the level of an average day, in the curve's units; 0: one factor
     "greed_range": [1.02, 1.09],  # the factor stays inside this range
     "greed_load": [0.0, 30],  # [how much the factor rises for each order without a driver above the usual number, that number]: with few cars waiting, drivers are free for more; 0: no such rise
+    "greed_later": 0.0,  # the factor for a car due after the weekend: the driver curve says 88 in 100 of them get a driver in time, and 97 in 100 do, so their cost is put too high; 0.0: as any other car
     "greed": 1.06,  # a factor on the price that the models choose. Dealers react less to our price than the fitted curve says: 1.00 makes 14,027 a week, 1.06 14,785, 1.12 13,895 (g-*)
     "decline": 3.0,  # a price that no dealer takes, over the list price: a quote that loses costs nothing
     "max_waiting": 60,  # stop winning while this many orders have no driver
@@ -65,6 +66,7 @@ SETTINGS = {
     "pair_hold": [0, 10],  # [minutes that it waits for a partner, awake hours that must be left before its fee ladder]; 0 minutes: post at once
     "pair_rise": [],  # raises of a pair's fee before the ladder, as `rise` for a single car
     "pair_quotes": False,  # price a request lower when its car pairs with an order that waits for a driver. Measured: worse, the pair seldom forms (v10-pairquote)
+    "pair_share": 0.0,  # how much of a lane's expected pair saving comes off a car's cost when it is priced: 29% of our cars go in a return-trip pair, at 0.75 of the typical fees against 1.03 alone, and a lane's share runs from 3% to 45% and holds from week to week (analysis/pairs.py); 0.0: every car is priced as if it went alone
     "pair_odds": 0.8,  # how often such a pair then finds its driver
     # Trade-ins: the new car out to the customer and the old car back, one price and one gig. Their list price is about 1.9
     # times the typical fee, against 1.1 for other cars
@@ -154,6 +156,7 @@ SETTINGS = {
 URGENT = ["order_changed", "order_cancelled", "visit_failed", "gig_expired", "gig_dropped", "no_show", "offer_answered"]
 HOME_KM = 40  # a gig that ends this near a driver's home saves them the trip home
 MARKUPS = [0.96 + 0.02 * step for step in range(83)]  # the prices to choose from, over the list price: 0.96 to 2.6
+PAIRS = FITTED.get("pair_share") or {"lanes": {}, "bands": [], "by_band": [0.0], "saving": 0.0}  # each lane's share of cars that went in a pair, and what a pair saves
 AVERAGE_LEVEL = FITTED["dealer"]["level"]  # the day's level of the dealer curve on an average day of an average world
 REQUEST_MINUTES = 5 * 10 * HOUR  # requests arrive on five days, almost all from 08:00 to 18:00
 
@@ -449,6 +452,8 @@ class Desk:
                 continue
             if self.set["pairs"] and self.set["pair_quotes"] and self.level >= 4:
                 plan = self.with_partner(request, option, plan)
+            if self.set["pairs"] and self.set["pair_share"] and self.level >= 4 and len(request["legs"]) == 1:
+                plan = plan._replace(cost=plan.cost - self.set["pair_share"] * self.pair_share(request) * PAIRS["saving"] * plan.paid)
             only_later = options[0]["kind"] not in prices and option is not options[0]
             profit, markup = max((self.market.chance(request, m, trust, only_later, request["respondBy"]) * (m * option["listPriceCents"] - plan.cost + plan.chance * gain), m) for m in MARKUPS)
             if profit >= self.set["min_profit"]:
@@ -458,6 +463,8 @@ class Desk:
                     low, high = self.set["greed_range"]
                     factor += self.set["greed_slope"] * (self.market.mean - AVERAGE_LEVEL) + self.set["greed_load"][0] * (self.load() - self.set["greed_load"][1])
                     factor = max(low, min(high, factor))
+                if self.set["greed_later"] and plan.until // DAY > 4:
+                    factor = self.set["greed_later"]
                 markup *= factor
                 prices[option["kind"]], plans[option["kind"]] = euros(markup * option["listPriceCents"]), plan
                 markups.append(markup)
@@ -564,6 +571,16 @@ class Desk:
         saving = self.set["pair_odds"] * max(0.0, plan.paid - together)
         self.tally["quotes with a partner waiting"] += 1
         return plan._replace(cost=plan.cost - saving)
+
+    @staticmethod
+    def pair_share(request: dict) -> float:
+        """The share of this lane's cars that went in a return-trip pair in the revealed weeks. A lane without
+        one has the share of the lanes of its length."""
+        leg = request["legs"][0]
+        share = PAIRS["lanes"].get(f'{leg["pickup"]["placeId"]}>{leg["delivery"]["placeId"]}')
+        if share is None:
+            share = PAIRS["by_band"][sum(request["referenceFeeCents"] > edge for edge in PAIRS["bands"])]
+        return share
 
     def due(self) -> Counter:
         """Our cars by the day of their last pickup, and for each quote that a dealer has not judged yet, six tenths of a car."""
