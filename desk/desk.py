@@ -50,7 +50,9 @@ SETTINGS = {
     "greed_later": 0.0,  # the factor for a car due after the weekend: the driver curve says 88 in 100 of them get a driver in time, and 97 in 100 do, so their cost is put too high; 0.0: as any other car
     "greed": 1.06,  # a factor on the price that the models choose. Dealers react less to our price than the fitted curve says: 1.00 makes 14,027 a week, 1.06 14,785, 1.12 13,895 (g-*)
     "decline": 3.0,  # a price that no dealer takes, over the list price: a quote that loses costs nothing
-    "max_waiting": 60,  # stop winning while this many orders have no driver
+    # The cap was 60 until version 20's weekend rule let more Friday requests in: on a Friday afternoon most of the cars that wait are due
+    # on Monday and have the weekend, and the cap then stopped all pricing. At 80: 137 a week more on the 80 fresh weeks (standard error 37) and 43 more on the 80 unseen ones, better in 29 of the 160 weeks and worse in 1, the lowest week unchanged (mw-80). At 70: 119 more. At 100: as at 80 (mw-70, mw-100).
+    "max_waiting": 80,  # stop winning while this many orders have no driver
     "max_urgent": 20,  # ... or while this many of them are on the ladder: the last pickup is near
     "explore_fees": [0.5, 0.6, 0.7, 0.85, 1.0, 1.2, 1.4, 1.7, 2.0],
     # Two cars in one gig, when the second starts near where the first ends and ends near where the first starts: the driver
