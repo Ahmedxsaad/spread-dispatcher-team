@@ -145,6 +145,7 @@ SETTINGS = {
     "events": False,
     "calm_sd": 0.7,  # how far a calm day's level lies from the day before, in the curve's units, when the events are cases of their own
     "regimes": False,  # hold two beliefs about the day's level each morning: an ordinary day near the week's level, and a price war day
+    "dealer_shape": False,  # a dealer curve whose slope depends on the request: steeper on Monday and Tuesday, flatter when the first option asked for is a late one or the car is cheap to move (desk/fitted.json, dealer_shape)
     "slope_scale": 1.0,  # a factor on the fitted slope of the dealer curve
     "dealer_sd": 0.0,  # how far a dealer's own level may lie from the day's, in the curve's units; 0: one level for all dealers. No gain, also with the week's parts below (d-sd*, qd-03)
     # This week's own parts of the competitor's prices, learned like the day's level: [how far the part lies from zero, in the curve's units, and the share of it that holds overnight].
@@ -204,7 +205,7 @@ class Desk:
         self.pairable: list[dict] = []  # during one look: the waiting orders that can go in a pair
         kind, more = (RegimeMarket, {}) if self.set["regimes"] else (EventMarket, {"calm_sd": self.set["calm_sd"]}) if self.set["events"] else (Market, {})
         self.market = kind(level, **more, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"],
-                                                                           minutes=self.minutes, tilt=tuple(self.set["tilt"]), places=tuple(self.set["places"]))
+                                                                           minutes=self.minutes, tilt=tuple(self.set["tilt"]), places=tuple(self.set["places"]), shape=self.set["dealer_shape"])
         self.tally: Counter = Counter()  # what the desk did with each request, for the day's report
         if self.set["explore"]:
             self.set["max_waiting"], self.set["max_urgent"] = self.set["explore_caps"][len(roster) % len(self.set["explore_caps"])], 10 ** 6

@@ -21,7 +21,7 @@ LANE_LENGTH = (4.6814, 0.8868)  # the log of a lane's road minutes: its mean and
 
 class Market:
     def __init__(self, level: int, day_sd: float = 1.3, regions: Optional[dict] = None, outages: bool = True, dealer_sd: float = 0.0, slope_scale: float = 1.0,
-                 minutes: Optional[dict] = None, tilt: tuple = (0.0, 0.0), places: tuple = (0.0, 0.0)):
+                 minutes: Optional[dict] = None, tilt: tuple = (0.0, 0.0), places: tuple = (0.0, 0.0), shape: bool = False):
         fitted = FITTED["dealer"]
         # The competitor's prices have parts that are new in each world and move during the week (the handbook). Once a
         # week its price list changes shape, so short and long lanes move in opposite directions. Some mornings its
@@ -40,6 +40,7 @@ class Market:
         self.today: list[tuple[str, float, bool]] = []  # (pickup place, score without the level, won) of today's judged quotes in working hours
         self.outage: Optional[tuple[int, set, float]] = None  # (day, places, shift) once found; a week has one
         self.slope, self.only_later = fitted["slope"] * slope_scale, fitted["only_later"]
+        self.shape, self.shaped = (FITTED.get("dealer_shape") if shape else None), (None, 0.0, 0.0)  # a slope that depends on the request, and the last request it was worked out for
         self.pickup, self.delivery = fitted["pickup"], fitted["delivery"]
         self.mean = fitted["level"] + LEVEL_SHIFT.get(level, 0.0)  # our belief about today's level: a mean and a variance
         self.var = fitted["level_sd"] ** 2
@@ -52,7 +53,23 @@ class Market:
 
     def base(self, request: dict, markup: float, trust: int, only_later: bool) -> float:
         """The score without today's level."""
-        return self.lane(request) - self.slope * math.log(markup / (1 + trust / 100)) + self.only_later * only_later
+        x = math.log(markup / (1 + trust / 100))
+        score = self.lane(request) - self.slope * x + self.only_later * only_later
+        if self.shape:
+            steeper, level = self.shape_of(request)
+            score += level - steeper * (x - self.shape["x0"])
+        return score
+
+    def shape_of(self, request: dict) -> tuple[float, float]:
+        """How much steeper than the one fitted slope this request's dealer answers price, and the level that goes with it.
+        Dealers are most sensitive on Monday (slope 14.5 where the week has 12.4) and least when the first option that
+        they ask for is a late one (9.3) or the car is cheap to move."""
+        if self.shaped[0] != request["id"]:
+            first = request["options"][0]
+            parts = [name for name, there in (("monday", request["arrivedAt"] // DAY % 7 == 0), ("tuesday", request["arrivedAt"] // DAY % 7 == 1), ("next_day_first", first["kind"] == "next_day"),
+                                                ("later_first", first["kind"] == "within_3_days"), ("small", first["listPriceCents"] <= 3000)) if there]
+            self.shaped = (request["id"], self.shape["everywhere"] + sum(self.shape["slope"][name] for name in parts), sum(self.shape["level"][name] for name in parts))
+        return self.shaped[1], self.shaped[2]
 
     def in_outage(self, request: dict, at: int) -> float:
         """The rise of the level for this request: its pickup lies in the region that is down now."""

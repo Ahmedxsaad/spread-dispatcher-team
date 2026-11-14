@@ -1139,5 +1139,24 @@
   ],
   "saving": 0.262,
   "from": "49377 cars of 3 runs (v15 v16 v17b)"
+ },
+ "dealer_shape": {
+  "x0": 0.3262,
+  "everywhere": 0.326,
+  "slope": {
+   "monday": 1.746,
+   "tuesday": 0.828,
+   "next_day_first": -1.22,
+   "later_first": -3.39,
+   "small": -1.682
+  },
+  "level": {
+   "monday": -0.03,
+   "tuesday": -0.015,
+   "next_day_first": -0.034,
+   "later_first": 0.499,
+   "small": 0.093
+  },
+  "from": "80 exploration weeks, on top of the fitted score and each day's level; 0.7% better log loss on weeks it was not fitted on"
  }
 }
