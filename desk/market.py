@@ -21,14 +21,14 @@ LANE_LENGTH = (4.6814, 0.8868)  # the log of a lane's road minutes: its mean and
 
 class Market:
     def __init__(self, level: int, day_sd: float = 1.3, regions: Optional[dict] = None, outages: bool = True, dealer_sd: float = 0.0, slope_scale: float = 1.0,
-                 minutes: Optional[dict] = None, tilt: tuple = (0.0, 0.0), places: tuple = (0.0, 0.0)):
+                 minutes: Optional[dict] = None, tilt: tuple = (0.0, 0.0), places: tuple = (0.0, 0.0), route: tuple = (0.0, 1.0)):
         fitted = FITTED["dealer"]
         # The competitor's prices have parts that are new in each world and move during the week (the handbook). Once a
         # week its price list changes shape, so short and long lanes move in opposite directions. Some mornings its
         # prices for cars leaving a place, or arriving there, move a step. So on top of the day's level the desk learns
         # this week's tilt by the lane's length, and this week's level of each pickup place and of each delivery place.
         self.minutes = minutes or {}  # (pickup place, delivery place) -> road minutes
-        self.own = {"tilt": tilt, "from": places, "to": places}  # part -> (how far it lies from zero, the share of it that holds overnight)
+        self.own = {"tilt": tilt, "from": places, "to": places, "route": route}  # part -> (how far it lies from zero, the share of it that holds overnight)
         self.parts: dict[tuple, list[float]] = {}  # (part, place) -> [mean, variance]
         # Each morning the competitor moves its prices for each dealer by what we won there. So each dealer
         # has a level of its own on top of the day's, learned from that dealer's answers alone.
@@ -69,7 +69,7 @@ class Market:
         pickup, delivery = leg["pickup"]["placeId"], leg["delivery"]["placeId"]
         length = (math.log(max(1, self.minutes.get((pickup, delivery), 108))) - LANE_LENGTH[0]) / LANE_LENGTH[1]
         return [(self.parts.setdefault((part, place), [0.0, self.own[part][0] ** 2]), weight)
-                for part, place, weight in (("tilt", "", length), ("from", pickup, 1.0), ("to", delivery, 1.0)) if self.own[part][0] > 0]
+                for part, place, weight in (("tilt", "", length), ("from", pickup, 1.0), ("to", delivery, 1.0), ("route", (pickup, delivery), 1.0)) if self.own[part][0] > 0]
 
     def score(self, request: dict, markup: float, trust: int, only_later: bool, at: int = 0) -> float:
         own = sum(belief[0] * weight for belief, weight in self.of_week(request))

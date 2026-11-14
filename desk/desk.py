@@ -148,6 +148,7 @@ SETTINGS = {
     # On 80 weeks with random prices they predict the next answer 3.9% better. In play, on 120 weeks: 314 a week more than without them (standard error 105), and 0.8 fewer late cars a week (q-both)
     "tilt": [0.5, 0.7],  # by the lane's length: once a week the competitor's price list changes shape. 0: no tilt
     "places": [0.6, 0.7],  # a level for each pickup place and each delivery place: some mornings the competitor moves its prices there. 0: none
+    "route": [0.0, 1.0],  # optional weekly price level for a directed lane, learned from its earlier wins and losses
     "outages": False,  # look for the region where the competitor is down for a day, and price its dealers higher. Measured: found in 18 of 20 weeks, but mostly in the afternoon; no gain (v9-outage)
     "late_opening": 1.2,  # a late car: the fee until the next refund step comes near
     "late_ladder": [[240, 1.5], [120, 2.0]],
@@ -201,7 +202,7 @@ class Desk:
         self.pairable: list[dict] = []  # during one look: the waiting orders that can go in a pair
         kind, more = (RegimeMarket, {}) if self.set["regimes"] else (EventMarket, {"calm_sd": self.set["calm_sd"]}) if self.set["events"] else (Market, {})
         self.market = kind(level, **more, regions={town: {place for place in places if self.air[(town, place)] <= 80} for town in places}, outages=self.set["outages"], dealer_sd=self.set["dealer_sd"], slope_scale=self.set["slope_scale"],
-                                                                           minutes=self.minutes, tilt=tuple(self.set["tilt"]), places=tuple(self.set["places"]))
+                                                                           minutes=self.minutes, tilt=tuple(self.set["tilt"]), places=tuple(self.set["places"]), route=tuple(self.set["route"]))
         self.tally: Counter = Counter()  # what the desk did with each request, for the day's report
         if self.set["explore"]:
             self.set["max_waiting"], self.set["max_urgent"] = self.set["explore_caps"][len(roster) % len(self.set["explore_caps"])], 10 ** 6
