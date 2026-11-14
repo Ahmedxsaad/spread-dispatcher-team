@@ -34,6 +34,7 @@ SETTINGS = {
     "private_chance": 0.78,  # ... for a car to or from a private address
     "long_chance": [240, 0.70],  # [drive minutes, minimum chance then]: long lanes earn the most a car, 80 to 100 euros. On 40 weeks: 370 a week more (z-long70-spare3)
     "late_cost": 0.6,  # what a late car costs us beyond its fee, as a share of its list price: the refund, and the dealer's goodwill
+    "ordinary_quote_risk_half": False,  # level 8 experiment: halve the quote's lateness allowance for ordinary cars opening at 0.85
     "trust_value": 0.0,  # how much of a trust point's worth lowers our price, to win the order and its point. Measured: pricing low to buy trust loses (u-gain0, t-trust2)
     "trust_late": 1.0,  # how much of the trust that a late car loses counts in its cost
     "win_share": 0.4,  # the share of a dealer's later requests that we expect to win
@@ -437,6 +438,10 @@ class Desk:
             offered = options if mode < 0.5 else options[:1] if mode < 0.75 else options[-1:]
             return {option["kind"]: euros(option["listPriceCents"] * markup) for option in offered}
         dealer = request["dealerId"]
+        leg = request["legs"][0]
+        ordinary_quote = (self.set["ordinary_quote_risk_half"] and self.level == 8 and len(request["legs"]) == 1
+                          and not leg["car"]["premium"] and not leg["pickup"]["privateAddress"] and not leg["delivery"]["privateAddress"]
+                          and not self.charging(leg) and facts == notes.Facts())
         trust = self.books.trust[dealer]
         gain = self.set["trust_value"] * self.trust_point(dealer) if trust + self.pending(dealer) < 25 else 0.0  # the dealer counts at most 25 orders
         prices, plans, markups = {}, {}, []
@@ -450,12 +455,15 @@ class Desk:
             if self.due_now[plan.until // DAY] + 1 > limit and plan.chance < safe:
                 self.tally["options over the day's limit"] += 1
                 continue
+            # Save the single-car provision before applying any independent pair saving. The driver still gets the original plan.
+            quote_reduction = (plan.cost - plan.paid) / 2 if ordinary_quote and plan.fee == 0.85 else 0.0
             if self.set["pairs"] and self.set["pair_quotes"] and self.level >= 4:
                 plan = self.with_partner(request, option, plan)
             if self.set["pairs"] and self.set["pair_share"] and self.level >= 4 and len(request["legs"]) == 1:
                 plan = plan._replace(cost=plan.cost - self.set["pair_share"] * self.pair_share(request) * PAIRS["saving"] * plan.paid)
             only_later = options[0]["kind"] not in prices and option is not options[0]
-            profit, markup = max((self.market.chance(request, m, trust, only_later, request["respondBy"]) * (m * option["listPriceCents"] - plan.cost + plan.chance * gain), m) for m in MARKUPS)
+            quote_cost = plan.cost - quote_reduction
+            profit, markup = max((self.market.chance(request, m, trust, only_later, request["respondBy"]) * (m * option["listPriceCents"] - quote_cost + plan.chance * gain), m) for m in MARKUPS)
             if profit >= self.set["min_profit"]:
                 drive = self.minutes[(request["legs"][0]["pickup"]["placeId"], request["legs"][0]["delivery"]["placeId"])]
                 factor = self.set["greed_short"][1] if drive <= self.set["greed_short"][0] else self.set["greed_long"][1] if drive >= self.set["greed_long"][0] else self.set["greed"]
