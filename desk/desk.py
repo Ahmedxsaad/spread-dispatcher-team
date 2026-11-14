@@ -115,6 +115,7 @@ SETTINGS = {
     "short_day_drops": 6,  # this many drops before 02:00 mark the day
     "short_day_steps": [[360, 1.15], [480, 1.35], [600, 1.6]],  # [minute of that day, fee]: the cars due that day go up early, while drivers still plan their day. Steeper steps cost more and gain nothing (sd-*)
     "short_day_chance": 0.0,  # on a day that began with a night of drops, still price a car that needs a pickup that day when its chance of a driver in time is at least this; 0.0: none of them
+    "short_day_open": 0.0,  # the opening fee, over the typical fee, of a car that is won on such a day and due on it, in place of the day's early steps: those are for the cars that waited overnight, and at up to 1.6 they make a new car cost nearly twice its plan; 0.0: the early steps for every car due that day
     "short_day_cost": False,  # ... and count such a car at the fee that it will open at: on such a day the cars due that day open at the day's early fee steps, up to 1.6 of the typical fee, where the plan assumed its own opening fee
     "short_day_quotes": False,  # on such a day, still price the options that need a pickup today
     # The guard of the delivery minimum: on the day when drivers stay at home, up to a quarter of the cars due that day are late.
@@ -513,6 +514,8 @@ class Desk:
             return None  # only the surest cars
         if plan is not None and self.set["short_day_cost"] and until // DAY in self.short_days:
             step = max([ratio for minute, ratio in self.set["short_day_steps"] if post_at >= until // DAY * DAY + minute] + [0.0])
+            if self.set["short_day_open"] and post_at // DAY == until // DAY:
+                step = self.set["short_day_open"]
             if step > plan.fee:  # the gig opens at the day's step, not at the plan's fee
                 paid = request["referenceFeeCents"] * step
                 plan = plan._replace(paid=paid, cost=paid + (1 - plan.chance) * late)
@@ -909,6 +912,8 @@ class Desk:
         else:
             opening, ladder, rise = self.set["late_opening"], self.set["late_ladder"], []
         early = [(until // DAY * DAY + minute, ratio) for minute, ratio in self.set["short_day_steps"]] if stage == 0 and until // DAY in self.short_days else []
+        if early and self.won_today(order["id"], until):
+            early = [(self.now, self.set["short_day_open"])]  # one step that is due at once: the car opens at this fee, or at its plan's if that is higher
         if stage == 0 and new and not early:
             opening, early = self.intro(opening, until, self.set["intro"])
         return schedule(self.now, reference, opening, until - self.set["reach"], ladder, rise, single=self.level == 1, early=early)
@@ -944,11 +949,17 @@ class Desk:
             if gig.status != "open" or gig.stage != 0 or gig.until // DAY != today or gig.id in self.raised or order is None:
                 continue
             self.raised.add(gig.id)
+            if self.won_today(order["id"], gig.until):
+                continue  # it opened at the day's fee for new cars
             reference = self.reference_of(gig.legs)
             shown = max(step["feeCents"] for step in gig.post["schedule"] if step["at"] <= self.now) / reference  # never below the fee in the app now
             early = [(today * DAY + minute, ratio) for minute, ratio in self.set["short_day_steps"]]
             gig.post = {**gig.post, "schedule": schedule(self.now, reference, shown, gig.until - self.set["reach"], self.set["ladder"], single=self.level == 1, early=early)}
             self.send({"type": "reprice", "gigId": gig.id, "schedule": gig.post["schedule"]})
+
+    def won_today(self, order_id: str, until: int) -> bool:
+        """The car was won on the day of its last pickup, and that day has its own opening fee for such cars."""
+        return bool(self.set["short_day_open"]) and self.won_at.get(order_id, -DAY) // DAY == until // DAY
 
     def opening(self, order: dict) -> float:
         """The opening fee over the typical fee: the one behind our price, or a new plan for a car that we post again."""
