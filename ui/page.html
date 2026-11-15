@@ -1,0 +1,488 @@
+<title>Night Shift Control Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&family=Poppins:wght@400;500;600&family=Reddit+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a quiet control room. A fixed rail on the left names the rooms; each room is one question with its evidence. */
+:root {
+  --page: #f5f3ec; --card: #fffef7; --ink: #12110e; --ink-2: #423d33; --muted: #726958; --line: #e6e1d6;
+  --red: #e63950; --teal: #1f93a8; --orange: #e8590c; --green: #1f8f5f; --context: #cdc6b6; --paper: #ffffff;
+  --display: "Unbounded", "Poppins", system-ui, sans-serif;
+  --body: "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Reddit Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #141310; --card: #1d1b17; --ink: #f3efe4; --ink-2: #d2cab8; --muted: #a39a87; --line: #343027;
+    --red: #f0556a; --teal: #35a3b8; --orange: #df6630; --green: #3fb984; --context: #4d473b; --paper: #ffffff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #141310; --card: #1d1b17; --ink: #f3efe4; --ink-2: #d2cab8; --muted: #a39a87; --line: #343027;
+  --red: #f0556a; --teal: #35a3b8; --orange: #df6630; --green: #3fb984; --context: #4d473b; --paper: #ffffff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 15px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+.shell { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 40px; max-width: 1320px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; border-radius: 6px; }
+
+/* The rail */
+.rail { position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; height: 100vh; padding-block: 28px; display: flex; flex-direction: column; gap: 28px; }
+.brand { display: flex; flex-direction: column; gap: 4px; }
+.brand b { font: 600 15px/1.2 var(--display); display: flex; align-items: center; gap: 8px; }
+.brand b::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+.brand span { color: var(--muted); font-size: 12px; }
+.rail nav { display: flex; flex-direction: column; gap: 2px; }
+.rail nav a { text-decoration: none; padding: 8px 12px; border-radius: 8px; color: var(--ink-2); font-weight: 500; font-size: 14px; }
+.rail nav a:hover { background: var(--card); }
+.rail nav a.here { background: var(--ink); color: var(--page); }
+.rail .plays { margin-top: auto; border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); font-size: 12px; display: grid; gap: 4px; }
+.rail .plays b { color: var(--ink); font: 500 12px var(--mono); }
+
+/* Rooms */
+main { padding-block: 28px 80px; display: flex; flex-direction: column; gap: 72px; min-width: 0; }
+section { display: flex; flex-direction: column; gap: 24px; scroll-margin-top: 20px; min-width: 0; }
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 600 clamp(26px, 3.4vw, 38px)/1.18 var(--display); margin: 0; text-wrap: balance; max-width: 20ch; letter-spacing: -.01em; }
+h2 { font: 600 22px/1.25 var(--display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h3 { font: 600 16px/1.35 var(--body); margin: 0; }
+p { margin: 0; max-width: 68ch; color: var(--ink-2); }
+.lede { font-size: 17px; }
+.head { display: flex; flex-direction: column; gap: 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.paper { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 12px; overflow-x: auto; }
+.paper img { display: block; width: 100%; min-width: 760px; max-width: none; height: auto; }
+.split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px; align-items: start; }
+.split > div { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.note { font-size: 13px; color: var(--muted); max-width: 75ch; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--mono); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.chip.kept::before { background: var(--green); }
+.chip.dropped::before { background: var(--orange); }
+
+/* Figures */
+.figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--card); overflow: hidden; }
+.figure { padding: 22px 24px; display: flex; flex-direction: column; gap: 6px; border-left: 1px solid var(--line); }
+.figure:first-child { border-left: 0; }
+.figure b { font: 600 26px/1.1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.figure span { font-size: 13px; color: var(--muted); }
+
+/* Tables */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 10px 0; white-space: nowrap; }
+td { padding: 9px 12px 9px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 0; padding-left: 12px; }
+td.bar { width: 34%; min-width: 150px; }
+.track { display: flex; align-items: center; gap: 10px; }
+.track i { display: block; height: 10px; border-radius: 0 4px 4px 0; background: var(--teal); min-width: 2px; }
+.track span { font: 500 13px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.loss { color: var(--orange); }
+tr.us td { font-weight: 600; }
+tr.us td:first-child { box-shadow: inset 3px 0 0 var(--red); padding-left: 10px; }
+td.heat { text-align: center; font-family: var(--mono); font-variant-numeric: tabular-nums; padding: 0; border-top: 2px solid var(--card); border-left: 2px solid var(--card); }
+td.heat span { display: block; padding: 9px 6px; border-radius: 4px; }
+.idea b { display: block; font-weight: 600; }
+.idea small { color: var(--muted); font-size: 13px; line-height: 1.45; display: block; }
+
+/* The price rule */
+.dials { display: grid; gap: 14px; }
+.dial { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; font-size: 14px; }
+.dial output { font: 500 13px var(--mono); color: var(--ink); }
+.dial input { grid-column: 1 / -1; width: 100%; accent-color: var(--ink); margin: 2px 0 0; }
+.answer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
+.answer div { display: flex; flex-direction: column; gap: 2px; }
+.answer b { font: 600 20px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+.answer span { font-size: 12px; color: var(--muted); }
+
+/* Charts */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font: 400 11px var(--mono); fill: var(--muted); }
+.chart .strong { fill: var(--ink); font-weight: 500; }
+.grid { stroke: var(--line); stroke-width: 1; }
+.axis { stroke: var(--muted); stroke-width: 1; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--page); border-radius: 8px; padding: 8px 10px; font: 400 12px/1.5 var(--mono); white-space: nowrap; z-index: 5; transform: translate(-50%, -100%); }
+.tip b { font-weight: 500; }
+.tip .me { color: var(--red); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 18px; height: 3px; border-radius: 2px; background: var(--context); display: inline-block; }
+.legend i.box { width: 10px; height: 10px; border-radius: 2px; }
+
+/* Week by week */
+.picker { display: flex; flex-direction: column; gap: 4px; }
+.picker button { all: unset; cursor: pointer; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-2); }
+.picker button:hover { background: var(--page); }
+.picker button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+.picker button i { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
+.picker button.kept i { background: var(--green); }
+.picker button em { font: 500 12px var(--mono); font-style: normal; font-variant-numeric: tabular-nums; }
+.verdict { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
+.verdict b { font: 600 24px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--ink-2); }
+.facts b { font: 500 13px var(--mono); color: var(--ink); }
+
+.runs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.runs .card { gap: 6px; padding: 20px; }
+.runs b { font: 600 20px var(--display); }
+.runs span { font-size: 13px; color: var(--muted); }
+.list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
+.list div { padding: 12px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.list b { font-weight: 500; }
+.list span { font-size: 13px; color: var(--muted); }
+.list code, code { font: 400 12px var(--mono); background: var(--page); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--ink-2); }
+footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--muted); font-size: 13px; display: grid; gap: 6px; }
+
+@media (max-width: 980px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .rail { position: static; height: auto; flex-direction: column; gap: 14px; padding-block: 18px 6px; }
+  .rail nav { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .rail nav a { padding: 6px 10px; background: var(--card); border: 1px solid var(--line); }
+  .rail .plays { display: none; }
+  .two, .runs, .list, .split { grid-template-columns: minmax(0, 1fr); }
+  .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .figure:nth-child(3) { border-left: 0; }
+  .figure:nth-child(n+3) { border-top: 1px solid var(--line); }
+  main { gap: 56px; }
+}
+@media (max-width: 480px) {
+  .card { padding: 18px 16px; }
+  .figure { padding: 16px; }
+  .figure b { font-size: 21px; }
+  .answer { grid-template-columns: minmax(0, 1fr); }
+  .hide-narrow { display: none; }
+  td.bar { min-width: 112px; width: 44%; }
+}
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+<!--BODY-->
+<div class="shell">
+  <aside class="rail">
+    <div class="brand"><b>Night Shift</b><span>DaVinci's Night Shift · Spread, Junction 2026</span></div>
+    <nav aria-label="Rooms">
+      <a href="#result">Result</a>
+      <a href="#desk">The desk</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#rounds">Rounds and finals</a>
+      <a href="#not-taken">Not taken</a>
+      <a href="#live">The live final</a>
+    </nav>
+    <div class="plays"><span>Plays the final</span><b>version 21 · bbf9448</b><span>Sunday 15 November, 08:00 Helsinki</span></div>
+  </aside>
+
+  <main>
+    <section id="result">
+      <div class="head">
+        <span class="eyebrow">Bahn Express · one simulated week of car transport in Finland</span>
+        <h1>A dispatcher that prices by what it has measured</h1>
+        <p class="lede">Dealers ask for prices, and a competitor answers them too. Each car that we win needs a freelance driver, found by posting a gig with a fee. The score is the margin; a team counts only with 90% of its orders on time. The desk makes two estimates, applies one rule, and keeps one guard.</p>
+      </div>
+      <div class="figures" id="figures"></div>
+    </section>
+
+    <section id="desk">
+      <div class="head">
+        <span class="eyebrow">The desk</span>
+        <h2>One request, one price, one gig</h2>
+        <p>Every request takes the same path. The numbers beside each step are what that step was measured to be worth, on the same practice weeks with it and without it.</p>
+      </div>
+      <div class="paper"><img src="DIAGRAM:how-the-desk-decides" alt="How the desk decides: a dealer's request is read, the notes reader extracts the real hours, a driver curve and a dealer curve estimate cost and chance, the price rule picks the price with the highest expected profit, the guard checks the week's room, and the won car becomes a gig."></div>
+      <div class="card">
+        <div class="head">
+          <h3>Try the price rule</h3>
+          <p class="note">A car with a list price of €100. The dealer curve is the fitted one; move what the desk knows and watch the price that it quotes.</p>
+        </div>
+        <div class="split"><div>
+          <div class="dials">
+            <label class="dial" for="cost"><span>What a driver in time will cost</span><output id="cost-out"></output><input id="cost" type="range" min="40" max="95" step="1" value="60"></label>
+            <label class="dial" for="level"><span>Today's price level of the competitor</span><output id="level-out"></output><input id="level" type="range" min="-2" max="2" step="0.1" value="0"></label>
+            <label class="dial" for="trust"><span>Orders delivered on time to this dealer</span><output id="trust-out"></output><input id="trust" type="range" min="0" max="12" step="1" value="3"></label>
+          </div>
+          <div class="answer">
+            <div><b id="quoted"></b><span>quoted: 6% above the curve's choice</span></div>
+            <div><b id="chance"></b><span>chance that the dealer takes it</span></div>
+            <div><b id="profit"></b><span>expected profit</span></div>
+          </div>
+          <p class="note">The 6% is itself measured: a 6% higher price lost 13% of the orders where the curve said 24%, and made €758 a week more. The desk learns today's level from every quote that wins or loses, and each order delivered on time is worth 1% of price with that dealer.</p>
+        </div><div>
+          <div class="chart" id="rule-chart"></div>
+          <div class="legend"><span><i style="background:var(--teal)"></i>chance that the dealer takes the price</span><span><i style="background:var(--ink)"></i>expected profit</span><span><i style="background:var(--red)"></i>the price quoted</span></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <div class="head">
+        <span class="eyebrow">Evidence</span>
+        <h2>Each idea, with the weeks that judged it</h2>
+        <p>Practice weeks are deterministic: the same seed gives the same week to the cent. So an idea is judged on the same weeks with it and without it, and a week is compared with itself.</p>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>From the kit starter to version 20</h3><p class="note">Mean margin a week on the same 20 level 8 weeks. Each version adds to the one above it.</p></div>
+        <div class="scroll"><table id="ladder"></table></div>
+        <p class="note" id="ladder-note"></p>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>What each idea is worth</h3><p class="note">Margin a week with the idea, less the margin without it. Two ideas earn nothing and are there to keep the week ranked.</p></div>
+        <div class="scroll"><table id="ideas"></table></div>
+      </div>
+
+      <div class="paper"><img src="DIAGRAM:how-an-idea-becomes-a-default" alt="How an idea becomes a default: a setting that is off is played on 80 practice weeks with and without it; it must gain more than twice its standard error and must not lower the lowest week; then 80 unseen weeks judge it once; only then it becomes the default."></div>
+      <div class="card">
+          <div class="head"><h3>Week by week</h3><p class="note">Pick a change. Each bar is one practice week: its margin with the change, less its margin without it, sorted from the worst week to the best.</p></div>
+        <div class="split"><div>
+          <div class="picker" id="picker" role="group" aria-label="Changes"></div>
+        </div><div>
+          <div class="verdict" id="verdict"></div>
+          <div class="chart" id="pair-chart"></div>
+          <div class="legend"><span><i class="box" style="background:var(--teal)"></i>a week that gained</span><span><i class="box" style="background:var(--orange)"></i>a week that lost</span><span><i style="background:var(--ink)"></i>the mean of all weeks</span></div>
+          <div class="facts" id="pair-facts"></div>
+          <p class="note" id="pair-remark"></p>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="rounds">
+      <div class="head">
+        <span class="eyebrow">Rounds and finals</span>
+        <h2>Against the other teams</h2>
+        <p>Ranking rounds are five secret weeks that every team plays once. Test finals run by the clock, as the final does: nobody can pause the world.</p>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>The Sunday 01:00 test final, hour by hour</h3><p class="note">Margin of the first ten teams through the week, from the public feed that we recorded. 236 teams took part and 41 were ranked. Our desk played from the VM: second, with no late quote and no lost request.</p></div>
+        <div class="legend"><span><i style="background:var(--red)"></i>DaVinci's Night Shift</span><span><i></i>the other nine of the first ten</span></div>
+        <div class="chart" id="race"></div>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>Orders won on each weekday of that final</h3><p class="note">Wednesday was the day with few drivers. The nine other teams won their most orders on it; our desk held back, as its guard is built to, and kept the highest on-time share but two. What a looser Wednesday costs in practice is in the list of ideas not taken.</p></div>
+        <div class="scroll"><table id="days"></table></div>
+      </div>
+
+      <div class="two">
+        <div class="card">
+          <div class="head"><h3>Ranking rounds at level 8</h3><p class="note">Five secret weeks a round. The total changes with the round's weeks, so the place says more than the euros.</p></div>
+          <div class="scroll"><table id="rounds-table"></table></div>
+        </div>
+        <div class="card">
+          <div class="head"><h3>Three test finals</h3><p class="note">The same loop each time. What changed is the network between the desk and the server.</p></div>
+          <div class="scroll"><table>
+            <tr><th>Test final</th><th>Played from</th><th class="num">Place</th></tr>
+            <tr><td>Saturday 14:00<br><span class="note">joined on the week's Thursday</span></td><td>laptop</td><td class="num">9th of 55</td></tr>
+            <tr><td>Saturday 20:00<br><span class="note">the hall's Wi-Fi lost a request a minute</span></td><td>laptop</td><td class="num">29th of 75</td></tr>
+            <tr class="us"><td>Sunday 01:00<br><span class="note">after the loop was hardened</span></td><td>VM, 15 ms away</td><td class="num">2nd of 236</td></tr>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="not-taken">
+      <div class="head">
+        <span class="eyebrow">Not taken</span>
+        <h2>What was measured and left out</h2>
+        <p>Most ideas end here. Each one stays in the log under its label, and is off in the settings. These are twelve of more than sixty in the README.</p>
+      </div>
+      <div class="card"><div class="list" id="dropped"></div></div>
+    </section>
+
+    <section id="live">
+      <div class="head">
+        <span class="eyebrow">The live final</span>
+        <h2>34 minutes that nobody touches</h2>
+        <p>In the final a weekday hour lasts 18 seconds, so a request waits 4.5 seconds for its price. If our code stops, the world goes on and the competitor takes the requests. The service waits for the final, plays it, and starts again by itself.</p>
+      </div>
+      <div class="paper"><img src="DIAGRAM:the-live-final" alt="The live final: events arrive on a stream, the books are kept from the events, the desk decides and sends quotes and gigs back. Four nets: a request without an answer is recovered in place, a silent stream is opened again, a stopped process starts by itself, and the final is played from a VM near the server."></div>
+      <div class="card">
+          <div class="head"><h3>What the nets were measured to do</h3></div>
+          <div class="scroll"><table>
+            <tr><th>What went wrong</th><th>What happened</th></tr>
+            <tr><td>A request without an answer</td><td>Two recovered in place in one test final; no rejoin of the world</td></tr>
+            <tr><td>A stream that died without a word</td><td>Four opened again from their last event; nothing missed</td></tr>
+            <tr><td>A restart in the middle of a week</td><td>€19,444 a week with one, €19,208 without, on the same four weeks</td></tr>
+            <tr><td>The network dropping three times, and a restart across a midnight</td><td>€17,362 at 97.4% on time, on a week that makes €18,125 in practice mode</td></tr>
+            <tr><td>The hall's Wi-Fi</td><td>29th from it; 2nd from a VM 15 ms from the server</td></tr>
+          </table></div>
+          <p class="note">One look at the books takes 40 ms on average and 0.33 s at worst. The live loop keeps the rhythm of the practice weeks, so every measurement on this page was made at the pace that the final plays at.</p>
+      </div>
+      <footer>
+        <span>Every number here is computed by <code>ui/build.py</code> from <code>results/runs.csv</code>, <code>results/test-final-sunday-0100.csv</code> and <code>desk/fitted.json</code>, or stated in the README.</span>
+        <span>The decisions are in <code>desk/desk.py</code>, each setting with the measurement behind its value. The harness is <code>eval/</code>.</span>
+      </footer>
+    </section>
+  </main>
+</div>
+
+<script>
+const DATA = /*DATA*/;
+const $ = (id) => document.getElementById(id);
+const euro = (v) => (v < 0 ? "−€" : "€") + Math.abs(Math.round(v)).toLocaleString("en-US");
+const signed = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + "€" + Math.abs(Math.round(v)).toLocaleString("en-US");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const US = "DaVinci's Night Shift";
+
+// Figures
+$("figures").innerHTML = [
+  [euro(DATA.unseen.margin), "a week on 80 level 8 weeks that no setting was tuned on"],
+  [DATA.unseen.on_time.toFixed(1) + "%", "of the orders on time there; lowest week " + DATA.unseen.lowest + "%, the gate is 90%"],
+  ["2nd of 236", "teams in the Sunday 01:00 test final, played from the VM"],
+  [DATA.log.weeks.toLocaleString("en-US"), "practice weeks in the log, under " + DATA.log.labels + " labels"],
+].map(([big, small]) => `<div class="figure"><b>${big}</b><span>${small}</span></div>`).join("");
+
+// The ladder of versions
+(() => {
+  const top = Math.max(...DATA.ladder.map((r) => r.margin));
+  $("ladder").innerHTML = `<tr><th>Version</th><th>What it adds</th><th>Margin a week</th><th class="num hide-narrow">On time</th><th class="num hide-narrow">Lowest week</th></tr>` +
+    DATA.ladder.map((r) => `<tr><td class="mono">${r.version}</td><td>${esc(r.adds)}</td><td class="bar">${r.margin < 0
+      ? `<div class="track"><span class="loss">${euro(r.margin)}</span></div>`
+      : `<div class="track"><i style="width:${(70 * r.margin / top).toFixed(1)}%"></i><span>${euro(r.margin)}</span></div>`}</td><td class="num hide-narrow">${r.on_time.toFixed(1)}%</td><td class="num hide-narrow">${r.lowest.toFixed(1)}%</td></tr>`).join("");
+  $("ladder-note").textContent = "The last steps are too small for 20 weeks to show, so 80 and then 160 fresh weeks judged them: they are under Week by week. Version 21 makes " +
+    euro(DATA.unseen.margin) + " a week on the 80 unseen weeks, with " + DATA.unseen.orders + " orders a week.";
+})();
+
+// What each idea is worth
+(() => {
+  const top = Math.max(...DATA.ideas.map((r) => r.euros || 0));
+  $("ideas").innerHTML = `<tr><th>Idea</th><th>Effect a week</th><th class="hide-narrow">And</th></tr>` + DATA.ideas.map((r) => `<tr><td class="idea"><b>${esc(r.idea)}</b><small>${esc(r.why)}</small></td><td class="bar">${r.euros
+    ? `<div class="track"><i style="width:${(70 * r.euros / top).toFixed(1)}%"></i><span>${signed(r.euros)}</span></div>`
+    : `<span class="chip kept">keeps the week ranked</span>`}</td><td class="hide-narrow"><small class="note">${esc(r.words)}</small></td></tr>`).join("");
+})();
+
+// A tooltip that follows the pointer inside a chart
+function tipFor(box) {
+  const tip = document.createElement("div");
+  tip.className = "tip"; tip.hidden = true; box.appendChild(tip);
+  return {
+    show(html, x, y) {
+      tip.innerHTML = html; tip.hidden = false;
+      const half = tip.offsetWidth / 2, wide = box.clientWidth;
+      tip.style.left = Math.max(half, Math.min(wide - half, x)) + "px"; tip.style.top = Math.max(tip.offsetHeight + 4, y - 10) + "px";
+    },
+    hide() { tip.hidden = true; },
+  };
+}
+const ticks = (low, high, step) => { const out = []; for (let v = Math.ceil(low / step) * step; v <= high + 1e-9; v += step) out.push(v); return out; };
+
+// Week by week: one bar a week, sorted
+let chosen = 0;
+function drawPair() {
+  const p = DATA.pairs[chosen], box = $("pair-chart");
+  const W = 640, H = 260, left = 54, right = 8, top = 14, bottom = 24;
+  const low = Math.min(0, p.gains[0]), high = Math.max(0, p.gains[p.gains.length - 1]);
+  const span = high - low || 1, step = span > 6000 ? 2000 : span > 3000 ? 1000 : 500;
+  const y = (v) => top + (H - top - bottom) * (high - v) / span;
+  const each = (W - left - right) / p.gains.length, bar = Math.max(1, each - (each > 4 ? 2 : each > 2.5 ? 1 : 0));
+  const bars = p.gains.map((g, i) => g === 0 ? "" : `<rect x="${(left + i * each).toFixed(1)}" y="${Math.min(y(g), y(0)).toFixed(1)}" width="${bar.toFixed(1)}" height="${Math.max(1, Math.abs(y(g) - y(0))).toFixed(1)}" fill="var(${g > 0 ? "--teal" : "--orange"})"/>`).join("");
+  const lines = ticks(low, high, step).map((v) => `<line class="grid" x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}"/><text x="${left - 8}" y="${y(v) + 4}" text-anchor="end">${signed(v)}</text>`).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(p.what)}: the difference in each of ${p.weeks} weeks, sorted">${lines}
+    <line class="axis" x1="${left}" x2="${W - right}" y1="${y(0)}" y2="${y(0)}"/>${bars}
+    <line x1="${left}" x2="${W - right}" y1="${y(p.mean)}" y2="${y(p.mean)}" stroke="var(--ink)" stroke-width="2" stroke-dasharray="6 4"/>
+    <text class="strong" x="${left + 6}" y="${y(Math.max(0, p.mean)) - 8}">mean ${signed(p.mean)}</text>
+    <text x="${left}" y="${H - 6}">the week that lost most</text><text x="${W - right}" y="${H - 6}" text-anchor="end">the week that gained most</text></svg>`;
+  const tip = tipFor(box), svg = box.querySelector("svg");
+  svg.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(p.gains.length - 1, Math.floor((x - left) / each)));
+    tip.show(`<b>${signed(p.gains[i]) === "€0" ? "unchanged" : signed(p.gains[i])}</b> · week ${i + 1} of ${p.weeks}`, e.clientX - r.left, (y(Math.max(0, p.gains[i])) * r.height) / H);
+  });
+  svg.addEventListener("pointerleave", () => tip.hide());
+  const kept = p.verdict.startsWith("kept"), same = p.gains.filter((g) => g === 0).length;
+  $("verdict").innerHTML = `<b>${signed(p.mean)}</b><span>a week, standard error €${p.error}</span><span class="chip ${kept ? "kept" : "dropped"}">${esc(p.verdict)}</span>`;
+  $("pair-facts").innerHTML = `<span><b>${p.weeks}</b> weeks</span><span><b>${p.better}</b> better</span><span><b>${p.worse}</b> worse</span><span><b>${same}</b> unchanged</span><span>lowest week <b>${p.lowest[0].toFixed(1)}%</b> on time before, <b>${p.lowest[1].toFixed(1)}%</b> after</span>`;
+  $("pair-remark").innerHTML = esc(p.remark) + ` In the log: <code>${esc(p.new)}</code> against <code>${esc(p.base)}</code>.`;
+  document.querySelectorAll("#picker button").forEach((b, i) => b.setAttribute("aria-pressed", i === chosen));
+}
+$("picker").innerHTML = DATA.pairs.map((p, i) => `<button type="button" id="pair-${i}" class="${p.verdict.startsWith("kept") ? "kept" : ""}" aria-pressed="false"><i></i><span>${esc(p.what)}</span><em>${signed(p.mean)}</em></button>`).join("");
+$("picker").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { chosen = +b.id.slice(5); drawPair(); } });
+drawPair();
+
+// The price rule
+function drawRule() {
+  const cost = +$("cost").value, shift = +$("level").value, trust = +$("trust").value, list = 100;
+  const { slope, level, spread } = DATA.dealer;
+  const chance = (price) => 1 / (1 + Math.exp(-(level + shift * spread - slope * Math.log(price / list / (1 + trust / 100)))));
+  const profit = (price) => chance(price) * (price - cost);
+  let best = cost;
+  for (let price = Math.max(cost, 60); price <= 200; price += 0.25) if (profit(price) > profit(best)) best = price;
+  const quoted = best * 1.06, from = 40, to = 180;
+  const W = 640, H = 300, left = 44, right = 12, gap = 26, top = 12, bottom = 24, tall = (H - top - bottom - gap) / 2;
+  const x = (price) => left + (W - left - right) * (price - from) / (to - from);
+  const peak = Math.max(10, Math.ceil(profit(best) / 10) * 10);
+  const y1 = (c) => top + tall * (1 - c), y2 = (v) => top + tall + gap + tall * (1 - Math.max(0, v) / peak);
+  const path = (f, y) => { let d = ""; for (let price = from; price <= to; price += 1) d += (d ? "L" : "M") + x(price).toFixed(1) + " " + y(f(price)).toFixed(1); return d; };
+  $("rule-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="The chance that the dealer takes each price, and the expected profit at each price">
+    ${[0, 0.5, 1].map((c) => `<line class="grid" x1="${left}" x2="${W - right}" y1="${y1(c)}" y2="${y1(c)}"/><text x="${left - 8}" y="${y1(c) + 4}" text-anchor="end">${c * 100}%</text>`).join("")}
+    ${[0, peak / 2, peak].map((v) => `<line class="grid" x1="${left}" x2="${W - right}" y1="${y2(v)}" y2="${y2(v)}"/><text x="${left - 8}" y="${y2(v) + 4}" text-anchor="end">€${v}</text>`).join("")}
+    ${ticks(from, to, 20).map((price) => `<text x="${x(price)}" y="${H - 6}" text-anchor="middle">€${price}</text>`).join("")}
+    <line x1="${x(cost)}" x2="${x(cost)}" y1="${top + tall + gap}" y2="${H - bottom}" stroke="var(--muted)" stroke-dasharray="3 4"/>
+    <text x="${x(cost) + 6}" y="${top + tall + gap + 10}">the driver's cost</text>
+    <path d="${path(chance, y1)}" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="${path(profit, y2)}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
+    <line x1="${x(quoted)}" x2="${x(quoted)}" y1="${top}" y2="${H - bottom}" stroke="var(--red)" stroke-width="2"/>
+    <circle cx="${x(quoted)}" cy="${y1(chance(quoted))}" r="5" fill="var(--red)" stroke="var(--card)" stroke-width="2"/>
+    <circle cx="${x(quoted)}" cy="${y2(profit(quoted))}" r="5" fill="var(--red)" stroke="var(--card)" stroke-width="2"/>
+    <circle cx="${x(best)}" cy="${y2(profit(best))}" r="4" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/>
+    <text x="${x(best) - 8}" y="${y2(profit(best)) - 8}" text-anchor="end">the curve's choice</text></svg>`;
+  $("cost-out").textContent = "€" + cost;
+  $("level-out").textContent = shift <= -1.2 ? "a price war" : shift < -0.3 ? "cheap" : shift <= 0.3 ? "an ordinary day" : shift < 1.2 ? "dear" : "very dear";
+  $("trust-out").textContent = trust + (trust === 1 ? " order" : " orders");
+  $("quoted").textContent = "€" + quoted.toFixed(0);
+  $("chance").textContent = (100 * chance(quoted)).toFixed(0) + "%";
+  $("profit").textContent = "€" + profit(quoted).toFixed(0);
+}
+["cost", "level", "trust"].forEach((id) => $(id).addEventListener("input", drawRule));
+drawRule();
+
+// The test final, hour by hour
+(() => {
+  const teams = DATA.final, box = $("race"), days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+  const last = Math.max(...teams.map((t) => t.points[t.points.length - 1][0])), high = 15000;
+  const W = 960, H = 340, left = 56, right = 14, top = 12, bottom = 26;
+  const x = (hour) => left + (W - left - right) * hour / last, y = (v) => top + (H - top - bottom) * (high - v) / high;
+  const at = (team, hour) => { let value = 0; for (const [h, margin] of team.points) { if (h > hour) break; value = margin; } return value; };
+  const line = (team) => team.points.map(([hour, margin], i) => (i ? "L" : "M") + x(hour).toFixed(1) + " " + y(margin).toFixed(1)).join("") + "L" + x(last).toFixed(1) + " " + y(team.margin).toFixed(1);
+  const others = teams.filter((t) => t.name !== US), us = teams.find((t) => t.name === US);
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Margin of the first ten teams through the test final's week">
+    ${ticks(0, high, 5000).map((v) => `<line class="grid" x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}"/><text x="${left - 8}" y="${y(v) + 4}" text-anchor="end">${euro(v)}</text>`).join("")}
+    ${days.map((day, i) => i * 24 > last ? "" : `<line class="grid" x1="${x(i * 24)}" x2="${x(i * 24)}" y1="${top}" y2="${H - bottom}"/><text x="${x(i * 24) + 6}" y="${H - 8}">${day}</text>`).join("")}
+    ${others.map((t) => `<path d="${line(t)}" fill="none" stroke="var(--context)" stroke-width="1.5" stroke-linejoin="round"/>`).join("")}
+    <path d="${line(us)}" fill="none" stroke="var(--red)" stroke-width="2.75" stroke-linejoin="round"/>
+    <circle cx="${x(last)}" cy="${y(us.margin)}" r="5" fill="var(--red)" stroke="var(--card)" stroke-width="2"/>
+    <line id="cross" x1="0" x2="0" y1="${top}" y2="${H - bottom}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg>`;
+  const tip = tipFor(box), svg = box.querySelector("svg"), cross = svg.querySelector("#cross");
+  svg.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), hour = Math.max(0, Math.min(last, Math.round(((e.clientX - r.left) * W / r.width - left) / (W - left - right) * last)));
+    cross.setAttribute("x1", x(hour)); cross.setAttribute("x2", x(hour)); cross.setAttribute("visibility", "visible");
+    const rows = teams.map((t) => [t.name, at(t, hour)]).sort((a, b) => b[1] - a[1]);
+    tip.show(`<b>${days[Math.floor(hour / 24)]} ${String(hour % 24).padStart(2, "0")}:00</b><br>` + rows.map(([name, v], i) => `<span class="${name === US ? "me" : ""}">${i + 1}. ${esc(name)} ${euro(v)}</span>`).join("<br>"), e.clientX - r.left, r.height * 0.9);
+  });
+  svg.addEventListener("pointerleave", () => { tip.hide(); cross.setAttribute("visibility", "hidden"); });
+
+  const all = teams.flatMap((t) => t.by_day), low = Math.min(...all), top2 = Math.max(...all);
+  $("days").innerHTML = `<tr><th class="num" style="text-align:left">#</th><th>Team</th>${days.slice(0, 5).map((d) => `<th style="text-align:center;padding-right:0">${d}</th>`).join("")}<th class="num">Orders</th><th class="num">On time</th><th class="num">Margin</th></tr>` +
+    teams.map((t) => `<tr class="${t.name === US ? "us" : ""}"><td class="mono">${t.place}</td><td>${esc(t.name)}</td>${t.by_day.map((n) => `<td class="heat"><span style="background:color-mix(in srgb, var(--teal) ${(6 + 58 * (n - low) / (top2 - low)).toFixed(0)}%, var(--card))">${n}</span></td>`).join("")}<td class="num">${t.orders}</td><td class="num">${t.on_time.toFixed(1)}%</td><td class="num">${euro(t.margin)}</td></tr>`).join("");
+})();
+
+// Ranking rounds
+(() => {
+  const top = Math.max(...DATA.rounds.map((r) => r.total));
+  $("rounds-table").innerHTML = `<tr><th>Round</th><th>Five weeks</th><th class="num">Place</th></tr>` + DATA.rounds.map((r) => `<tr><td>${r.round}<br><span class="note mono">${r.version} · ${r.on_time.toFixed(1)}% on time</span></td><td class="bar"><div class="track"><i style="width:${(62 * r.total / top).toFixed(1)}%"></i><span>${euro(r.total)}</span></div></td><td class="num">${r.place || "not noted"}</td></tr>`).join("");
+})();
+
+$("dropped").innerHTML = DATA.not_taken.map((r) => `<div><b>${esc(r.what)}</b><span>${esc(r.result)} · <code>${esc(r.label)}</code></span></div>`).join("");
+
+// The rail shows which room is in view
+if ("IntersectionObserver" in window) {
+  const links = [...document.querySelectorAll(".rail nav a")];
+  const seen = new IntersectionObserver((entries) => entries.forEach((entry) => {
+    if (entry.isIntersecting) links.forEach((a) => a.classList.toggle("here", a.getAttribute("href") === "#" + entry.target.id));
+  }), { rootMargin: "-20% 0px -70% 0px" });
+  document.querySelectorAll("main section").forEach((s) => seen.observe(s));
+}
+</script>

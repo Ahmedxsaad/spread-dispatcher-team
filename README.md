@@ -2,7 +2,21 @@
 
 Spread is Bahn Express's challenge at Junction 2026: one simulated week of a car transport company in Finland. Dealers ask for prices, and a competitor answers them too. Each car that we win needs a freelance driver, found by posting a gig with a fee. The score is the gross margin, and a team is ranked only when at least 90% of its orders arrive on time.
 
-This repository is our system (`desk/`), the harness that measures it (`eval/`), and the log of every week it has played (`results/runs.csv`).
+**In short.** The desk makes two estimates, applies one rule and keeps one guard. Version 21 makes €16,013 a week on 80 level 8 weeks that no setting was tuned on, at 97.0% on time, with the lowest week at 92.6%. In the Sunday 01:00 test final it was second of 236 teams. Every idea was measured on the same weeks with it and without it: the 11,651 practice weeks are in `results/runs.csv` under 272 labels, and what did not work is listed below with its number.
+
+![How the desk decides](docs/diagrams/how-the-desk-decides.png)
+
+This repository is our system (`desk/`), the harness that measures it (`eval/`), the log of every week it has played (`results/runs.csv`), and a page that shows the evidence with charts (`ui/index.html`: open it in a browser).
+
+![The page: the result, the desk, the evidence, the rounds and the live final](docs/control-room.png)
+
+| To read about | Go to |
+|---|---|
+| What it scores, version by version | [Result](#result) |
+| The two estimates, the rule, and each idea with its measured effect | [How it decides](#how-it-decides) |
+| The rule that an idea must pass to become a default | [How an idea becomes a default](#how-an-idea-becomes-a-default) |
+| More than sixty ideas that were measured and left out | [What did not work](#what-did-not-work) |
+| The live final, and what happens when the network fails | [Robustness](#robustness) |
 
 ## Result
 
@@ -102,6 +116,18 @@ On top of that, each idea below has a reason and a measured effect, on the same 
 | The reserve follows what the week can still bring | In the Saturday 18:00 round we were first over five weeks and only 12th and 10th in two of them: the guard's limit had turned 183 and 65 options away, and those weeks still ended at 96% and 98% on time. A diagnostic that writes down why each request is declined (it changes no result) showed where the limit costs. Of the 235 requests a week that the desk declines, 131 are worth €1 each by the models and 36 have no driver in time. But 37 are good cars over the day's limit: a driver in time for 88 in 100, €26 of expected profit each, and most are Friday's requests for cars due on Monday. The reveals say what those cars risk: 3% are late, 11% in the worst of 40 weeks, with or without a night of drops on that Monday. They have the weekend to find a driver. So cars due after the weekend get a reserve of 10%, not 25%. And every week that a smaller reserve hurt had 28 or more cars without a driver at some midnight before its bad day: a week that stays under 26 at every midnight reserves 15%. | +€169 on 200 weeks (standard error €37), +€181 on the 80 unseen ones; the lowest week unchanged at 92.6%. The first rule alone: +€125, better in 31 weeks and worse in 4. In the weeks with no night of drops: +€550 to +€920 |
 | Trade-ins | Their list price is 1.9 times the typical fee, against 1.1 for other cars. The world lets a driver bring the new car after the customer's booked hour, so the gig carries its own window on that stop: 94% arrive inside it. | +€204 |
 
+## How an idea becomes a default
+
+![How an idea becomes a default](docs/diagrams/how-an-idea-becomes-a-default.png)
+
+A practice week is deterministic: the same seed, level and actions give the same week to the cent. So an idea is a setting that is off, played on the same 80 weeks with it and without it, and each week is compared with itself (`eval.run`, `eval.compare`).
+
+- The gain must be more than twice its standard error. One cent less on every fee step moved one week by €1,354, so a smaller difference is noise.
+- The lowest week's on-time share must not fall. The final is one week, and under 90% on time a team is not ranked.
+- Then 80 weeks that no setting has seen judge the change once (`check-01` to `check-80`). The weeks that judged dozens of settings flatter the survivors.
+
+Only then the setting becomes the default, and plays the next ranking round. The page `ui/index.html` shows ten of these comparisons week by week, five that were kept and five that were not.
+
 ## What did not work
 
 Each of these is in `results/runs.csv` under the label in brackets, and is off in the settings.
@@ -139,6 +165,8 @@ Each of these is in `results/runs.csv` under the label in brackets, and is off i
   - One cent less on every fee step moved one week by €1,354: a single changed booking changes the rest of a week. That is why a difference under twice its standard error on 80 weeks counts as nothing here.
 - A lower threshold for the cars that still pass once the guard's allowance is spent, 0.90 for 0.95. In `v20`'s own weeks it changes one week of 200. In a stress test with prices 3% lower it acts in 4 of 80 weeks, and in all four the on-time share falls by 0.2 to 0.4 points; the margin rises in one of them (`gz-90`, `zs-base`, `zs-fix`). The teammate found on the way that at the exact edge the allowance is 1.8e-14 instead of zero in floating point, so the rule for a spent allowance did not run there; the fix is in the code as `guard_zero`, off, because with 0.95 it changes almost nothing.
 - Pricing the same-day cars on the day with few drivers after all: €223 a week less (`sq-on`). A lower least profit, 50 cents, and a minimum chance of 0.82: no change that 80 weeks can show (`mp-50`, `mc-82`).
+- After the Sunday 01:00 test final, its public feed showed where the leaders' orders come from: the nine other teams of the first ten won their most orders on the day with few drivers, and we our fewest (73, against 92 to 115). So three ways to take more of that day were measured on the 80 `more` weeks against `v21`. Prices for that day's cars after all, at a higher opening fee and a lower minimum chance (branch `test-shortday`): €6 a week more at best, and €298 less with the widest opening (`sd-90`, `so-100`). A guard that aims at 92% or at 90% on time in the worst case, where it aims at 94%: €3 and €26 a week less, and at 90% one week of 80 ends at 88.6%, not ranked (`gt-92`, `gt-90`). Both together: €146 less (standard error €81), the lowest week at 90.1% (`gt-92-so`). In our desk the late cars of that day cost more than its orders earn, so the guard stays as it is.
+- The dealer curve's shape refitted by price band (branch `test-shape`): €149 a week less, and the lowest week at 90.8% on time (`ds-on`).
 - The morning alarm with the day's quotes stopped as well, at 30 cars, or as a sign to the guard that the week's bad day has come: the last left one week at 88%, not ranked (`bb-35`, `bb-30`, `ba-35`).
 - A higher opening fee, 1.00, for the cars that book least easily. The randomised weeks, which had no fee raises before the last hours, said it would get more of them a driver in time. With our two raises it does not: €292 a week less, on time unchanged (`qh-75`).
 - A level for each dealer in the new learner: no gain, as before (`qd-03`).
@@ -165,6 +193,10 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 .venv/bin/python -m eval.compare v18 try                       # week by week against a version in the log
 ./play_ranking_round.sh 8                                      # the five weeks of the current ranking round
 ./run_final.sh                                                 # the final or a test final: waits, plays, restarts itself
+
+.venv/bin/python -m unittest discover -s tests                 # the tests of the live loop and the guard
+python3 ui/build.py                                            # the page, from the log: ui/index.html
+python3 docs/diagrams/draw.py                                  # the three diagrams, as Excalidraw scenes
 ```
 
 `pandas` and `scikit-learn` are needed only for `analysis/`. The desk itself uses the kit and the standard library.
@@ -181,10 +213,18 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 | `desk/play.py`, `desk/live.py` | The loops: a practice world, and the live final |
 | `eval/` | The harness: fixed weeks, parallel runs, the log, the comparison |
 | `analysis/` | Fits the curves, scores the note reader |
-| `results/runs.csv` | One row for each week played: over 5,000 weeks under 170 labels so far |
+| `tests/` | Tests of the live loop's recovery, the stream's time limit, the dealer curve and the guard |
+| `results/runs.csv` | One row for each week played: 11,651 weeks under 272 labels |
+| `results/test-final-sunday-0100.csv` | The public feed of the Sunday 01:00 test final as we recorded it: the first ten teams, hour by hour |
+| `ui/` | The page that shows the evidence: `build.py` computes every number from the log, `page.html` is the layout, `index.html` the result |
+| `docs/diagrams/` | The three diagrams: `draw.py` writes the Excalidraw scenes, from which the PNG and SVG files are rendered |
+| `RUNBOOK.md` | The morning of the final, step by step |
+| `AGENTS.md` | The rules for a teammate's coding agent: what protects the final, and what counts as evidence |
 | `context/` | The challenge's rules, handbook and kits, and our first notes |
 
 ## Robustness
+
+![The live final](docs/diagrams/the-live-final.png)
 
 - The desk rebuilds its books from the world's event history and its own list of orders and gigs. With lost requests and lost answers injected into every kind of call, four weeks scored the same as without (`flaky` tests).
 - The live loop played the Saturday 14:00 test final, a week joined on Thursday: 9th of 55 ranked teams, €3,375, 98.5% on time, no failed look and no late quote.

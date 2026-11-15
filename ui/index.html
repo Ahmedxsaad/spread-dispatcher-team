@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Night Shift Control Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&family=Poppins:wght@400;500;600&family=Reddit+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a quiet control room. A fixed rail on the left names the rooms; each room is one question with its evidence. */
+:root {
+  --page: #f5f3ec; --card: #fffef7; --ink: #12110e; --ink-2: #423d33; --muted: #726958; --line: #e6e1d6;
+  --red: #e63950; --teal: #1f93a8; --orange: #e8590c; --green: #1f8f5f; --context: #cdc6b6; --paper: #ffffff;
+  --display: "Unbounded", "Poppins", system-ui, sans-serif;
+  --body: "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Reddit Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #141310; --card: #1d1b17; --ink: #f3efe4; --ink-2: #d2cab8; --muted: #a39a87; --line: #343027;
+    --red: #f0556a; --teal: #35a3b8; --orange: #df6630; --green: #3fb984; --context: #4d473b; --paper: #ffffff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #141310; --card: #1d1b17; --ink: #f3efe4; --ink-2: #d2cab8; --muted: #a39a87; --line: #343027;
+  --red: #f0556a; --teal: #35a3b8; --orange: #df6630; --green: #3fb984; --context: #4d473b; --paper: #ffffff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 15px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+.shell { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 40px; max-width: 1320px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; border-radius: 6px; }
+
+/* The rail */
+.rail { position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; height: 100vh; padding-block: 28px; display: flex; flex-direction: column; gap: 28px; }
+.brand { display: flex; flex-direction: column; gap: 4px; }
+.brand b { font: 600 15px/1.2 var(--display); display: flex; align-items: center; gap: 8px; }
+.brand b::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+.brand span { color: var(--muted); font-size: 12px; }
+.rail nav { display: flex; flex-direction: column; gap: 2px; }
+.rail nav a { text-decoration: none; padding: 8px 12px; border-radius: 8px; color: var(--ink-2); font-weight: 500; font-size: 14px; }
+.rail nav a:hover { background: var(--card); }
+.rail nav a.here { background: var(--ink); color: var(--page); }
+.rail .plays { margin-top: auto; border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); font-size: 12px; display: grid; gap: 4px; }
+.rail .plays b { color: var(--ink); font: 500 12px var(--mono); }
+
+/* Rooms */
+main { padding-block: 28px 80px; display: flex; flex-direction: column; gap: 72px; min-width: 0; }
+section { display: flex; flex-direction: column; gap: 24px; scroll-margin-top: 20px; min-width: 0; }
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 600 clamp(26px, 3.4vw, 38px)/1.18 var(--display); margin: 0; text-wrap: balance; max-width: 20ch; letter-spacing: -.01em; }
+h2 { font: 600 22px/1.25 var(--display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h3 { font: 600 16px/1.35 var(--body); margin: 0; }
+p { margin: 0; max-width: 68ch; color: var(--ink-2); }
+.lede { font-size: 17px; }
+.head { display: flex; flex-direction: column; gap: 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.paper { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 12px; overflow-x: auto; }
+.paper img { display: block; width: 100%; min-width: 760px; max-width: none; height: auto; }
+.split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px; align-items: start; }
+.split > div { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.note { font-size: 13px; color: var(--muted); max-width: 75ch; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--mono); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.chip.kept::before { background: var(--green); }
+.chip.dropped::before { background: var(--orange); }
+
+/* Figures */
+.figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--card); overflow: hidden; }
+.figure { padding: 22px 24px; display: flex; flex-direction: column; gap: 6px; border-left: 1px solid var(--line); }
+.figure:first-child { border-left: 0; }
+.figure b { font: 600 26px/1.1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.figure span { font-size: 13px; color: var(--muted); }
+
+/* Tables */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 10px 0; white-space: nowrap; }
+td { padding: 9px 12px 9px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 0; padding-left: 12px; }
+td.bar { width: 34%; min-width: 150px; }
+.track { display: flex; align-items: center; gap: 10px; }
+.track i { display: block; height: 10px; border-radius: 0 4px 4px 0; background: var(--teal); min-width: 2px; }
+.track span { font: 500 13px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.loss { color: var(--orange); }
+tr.us td { font-weight: 600; }
+tr.us td:first-child { box-shadow: inset 3px 0 0 var(--red); padding-left: 10px; }
+td.heat { text-align: center; font-family: var(--mono); font-variant-numeric: tabular-nums; padding: 0; border-top: 2px solid var(--card); border-left: 2px solid var(--card); }
+td.heat span { display: block; padding: 9px 6px; border-radius: 4px; }
+.idea b { display: block; font-weight: 600; }
+.idea small { color: var(--muted); font-size: 13px; line-height: 1.45; display: block; }
+
+/* The price rule */
+.dials { display: grid; gap: 14px; }
+.dial { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; font-size: 14px; }
+.dial output { font: 500 13px var(--mono); color: var(--ink); }
+.dial input { grid-column: 1 / -1; width: 100%; accent-color: var(--ink); margin: 2px 0 0; }
+.answer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
+.answer div { display: flex; flex-direction: column; gap: 2px; }
+.answer b { font: 600 20px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+.answer span { font-size: 12px; color: var(--muted); }
+
+/* Charts */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font: 400 11px var(--mono); fill: var(--muted); }
+.chart .strong { fill: var(--ink); font-weight: 500; }
+.grid { stroke: var(--line); stroke-width: 1; }
+.axis { stroke: var(--muted); stroke-width: 1; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--page); border-radius: 8px; padding: 8px 10px; font: 400 12px/1.5 var(--mono); white-space: nowrap; z-index: 5; transform: translate(-50%, -100%); }
+.tip b { font-weight: 500; }
+.tip .me { color: var(--red); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 18px; height: 3px; border-radius: 2px; background: var(--context); display: inline-block; }
+.legend i.box { width: 10px; height: 10px; border-radius: 2px; }
+
+/* Week by week */
+.picker { display: flex; flex-direction: column; gap: 4px; }
+.picker button { all: unset; cursor: pointer; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--ink-2); }
+.picker button:hover { background: var(--page); }
+.picker button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+.picker button i { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
+.picker button.kept i { background: var(--green); }
+.picker button em { font: 500 12px var(--mono); font-style: normal; font-variant-numeric: tabular-nums; }
+.verdict { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
+.verdict b { font: 600 24px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--ink-2); }
+.facts b { font: 500 13px var(--mono); color: var(--ink); }
+
+.runs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.runs .card { gap: 6px; padding: 20px; }
+.runs b { font: 600 20px var(--display); }
+.runs span { font-size: 13px; color: var(--muted); }
+.list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
+.list div { padding: 12px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.list b { font-weight: 500; }
+.list span { font-size: 13px; color: var(--muted); }
+.list code, code { font: 400 12px var(--mono); background: var(--page); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--ink-2); }
+footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--muted); font-size: 13px; display: grid; gap: 6px; }
+
+@media (max-width: 980px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .rail { position: static; height: auto; flex-direction: column; gap: 14px; padding-block: 18px 6px; }
+  .rail nav { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .rail nav a { padding: 6px 10px; background: var(--card); border: 1px solid var(--line); }
+  .rail .plays { display: none; }
+  .two, .runs, .list, .split { grid-template-columns: minmax(0, 1fr); }
+  .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .figure:nth-child(3) { border-left: 0; }
+  .figure:nth-child(n+3) { border-top: 1px solid var(--line); }
+  main { gap: 56px; }
+}
+@media (max-width: 480px) {
+  .card { padding: 18px 16px; }
+  .figure { padding: 16px; }
+  .figure b { font-size: 21px; }
+  .answer { grid-template-columns: minmax(0, 1fr); }
+  .hide-narrow { display: none; }
+  td.bar { min-width: 112px; width: 44%; }
+}
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="brand"><b>Night Shift</b><span>DaVinci's Night Shift · Spread, Junction 2026</span></div>
+    <nav aria-label="Rooms">
+      <a href="#result">Result</a>
+      <a href="#desk">The desk</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#rounds">Rounds and finals</a>
+      <a href="#not-taken">Not taken</a>
+      <a href="#live">The live final</a>
+    </nav>
+    <div class="plays"><span>Plays the final</span><b>version 21 · bbf9448</b><span>Sunday 15 November, 08:00 Helsinki</span></div>
+  </aside>
+
+  <main>
+    <section id="result">
+      <div class="head">
+        <span class="eyebrow">Bahn Express · one simulated week of car transport in Finland</span>
+        <h1>A dispatcher that prices by what it has measured</h1>
+        <p class="lede">Dealers ask for prices, and a competitor answers them too. Each car that we win needs a freelance driver, found by posting a gig with a fee. The score is the margin; a team counts only with 90% of its orders on time. The desk makes two estimates, applies one rule, and keeps one guard.</p>
+      </div>
+      <div class="figures" id="figures"></div>
+    </section>
+
+    <section id="desk">
+      <div class="head">
+        <span class="eyebrow">The desk</span>
+        <h2>One request, one price, one gig</h2>
+        <p>Every request takes the same path. The numbers beside each step are what that step was measured to be worth, on the same practice weeks with it and without it.</p>
+      </div>
+      <div class="paper"><img src="../docs/diagrams/how-the-desk-decides.svg" alt="How the desk decides: a dealer's request is read, the notes reader extracts the real hours, a driver curve and a dealer curve estimate cost and chance, the price rule picks the price with the highest expected profit, the guard checks the week's room, and the won car becomes a gig."></div>
+      <div class="card">
+        <div class="head">
+          <h3>Try the price rule</h3>
+          <p class="note">A car with a list price of €100. The dealer curve is the fitted one; move what the desk knows and watch the price that it quotes.</p>
+        </div>
+        <div class="split"><div>
+          <div class="dials">
+            <label class="dial" for="cost"><span>What a driver in time will cost</span><output id="cost-out"></output><input id="cost" type="range" min="40" max="95" step="1" value="60"></label>
+            <label class="dial" for="level"><span>Today's price level of the competitor</span><output id="level-out"></output><input id="level" type="range" min="-2" max="2" step="0.1" value="0"></label>
+            <label class="dial" for="trust"><span>Orders delivered on time to this dealer</span><output id="trust-out"></output><input id="trust" type="range" min="0" max="12" step="1" value="3"></label>
+          </div>
+          <div class="answer">
+            <div><b id="quoted"></b><span>quoted: 6% above the curve's choice</span></div>
+            <div><b id="chance"></b><span>chance that the dealer takes it</span></div>
+            <div><b id="profit"></b><span>expected profit</span></div>
+          </div>
+          <p class="note">The 6% is itself measured: a 6% higher price lost 13% of the orders where the curve said 24%, and made €758 a week more. The desk learns today's level from every quote that wins or loses, and each order delivered on time is worth 1% of price with that dealer.</p>
+        </div><div>
+          <div class="chart" id="rule-chart"></div>
+          <div class="legend"><span><i style="background:var(--teal)"></i>chance that the dealer takes the price</span><span><i style="background:var(--ink)"></i>expected profit</span><span><i style="background:var(--red)"></i>the price quoted</span></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <div class="head">
+        <span class="eyebrow">Evidence</span>
+        <h2>Each idea, with the weeks that judged it</h2>
+        <p>Practice weeks are deterministic: the same seed gives the same week to the cent. So an idea is judged on the same weeks with it and without it, and a week is compared with itself.</p>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>From the kit starter to version 20</h3><p class="note">Mean margin a week on the same 20 level 8 weeks. Each version adds to the one above it.</p></div>
+        <div class="scroll"><table id="ladder"></table></div>
+        <p class="note" id="ladder-note"></p>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>What each idea is worth</h3><p class="note">Margin a week with the idea, less the margin without it. Two ideas earn nothing and are there to keep the week ranked.</p></div>
+        <div class="scroll"><table id="ideas"></table></div>
+      </div>
+
+      <div class="paper"><img src="../docs/diagrams/how-an-idea-becomes-a-default.svg" alt="How an idea becomes a default: a setting that is off is played on 80 practice weeks with and without it; it must gain more than twice its standard error and must not lower the lowest week; then 80 unseen weeks judge it once; only then it becomes the default."></div>
+      <div class="card">
+          <div class="head"><h3>Week by week</h3><p class="note">Pick a change. Each bar is one practice week: its margin with the change, less its margin without it, sorted from the worst week to the best.</p></div>
+        <div class="split"><div>
+          <div class="picker" id="picker" role="group" aria-label="Changes"></div>
+        </div><div>
+          <div class="verdict" id="verdict"></div>
+          <div class="chart" id="pair-chart"></div>
+          <div class="legend"><span><i class="box" style="background:var(--teal)"></i>a week that gained</span><span><i class="box" style="background:var(--orange)"></i>a week that lost</span><span><i style="background:var(--ink)"></i>the mean of all weeks</span></div>
+          <div class="facts" id="pair-facts"></div>
+          <p class="note" id="pair-remark"></p>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="rounds">
+      <div class="head">
+        <span class="eyebrow">Rounds and finals</span>
+        <h2>Against the other teams</h2>
+        <p>Ranking rounds are five secret weeks that every team plays once. Test finals run by the clock, as the final does: nobody can pause the world.</p>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>The Sunday 01:00 test final, hour by hour</h3><p class="note">Margin of the first ten teams through the week, from the public feed that we recorded. 236 teams took part and 41 were ranked. Our desk played from the VM: second, with no late quote and no lost request.</p></div>
+        <div class="legend"><span><i style="background:var(--red)"></i>DaVinci's Night Shift</span><span><i></i>the other nine of the first ten</span></div>
+        <div class="chart" id="race"></div>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>Orders won on each weekday of that final</h3><p class="note">Wednesday was the day with few drivers. The nine other teams won their most orders on it; our desk held back, as its guard is built to, and kept the highest on-time share but two. What a looser Wednesday costs in practice is in the list of ideas not taken.</p></div>
+        <div class="scroll"><table id="days"></table></div>
+      </div>
+
+      <div class="two">
+        <div class="card">
+          <div class="head"><h3>Ranking rounds at level 8</h3><p class="note">Five secret weeks a round. The total changes with the round's weeks, so the place says more than the euros.</p></div>
+          <div class="scroll"><table id="rounds-table"></table></div>
+        </div>
+        <div class="card">
+          <div class="head"><h3>Three test finals</h3><p class="note">The same loop each time. What changed is the network between the desk and the server.</p></div>
+          <div class="scroll"><table>
+            <tr><th>Test final</th><th>Played from</th><th class="num">Place</th></tr>
+            <tr><td>Saturday 14:00<br><span class="note">joined on the week's Thursday</span></td><td>laptop</td><td class="num">9th of 55</td></tr>
+            <tr><td>Saturday 20:00<br><span class="note">the hall's Wi-Fi lost a request a minute</span></td><td>laptop</td><td class="num">29th of 75</td></tr>
+            <tr class="us"><td>Sunday 01:00<br><span class="note">after the loop was hardened</span></td><td>VM, 15 ms away</td><td class="num">2nd of 236</td></tr>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="not-taken">
+      <div class="head">
+        <span class="eyebrow">Not taken</span>
+        <h2>What was measured and left out</h2>
+        <p>Most ideas end here. Each one stays in the log under its label, and is off in the settings. These are twelve of more than sixty in the README.</p>
+      </div>
+      <div class="card"><div class="list" id="dropped"></div></div>
+    </section>
+
+    <section id="live">
+      <div class="head">
+        <span class="eyebrow">The live final</span>
+        <h2>34 minutes that nobody touches</h2>
+        <p>In the final a weekday hour lasts 18 seconds, so a request waits 4.5 seconds for its price. If our code stops, the world goes on and the competitor takes the requests. The service waits for the final, plays it, and starts again by itself.</p>
+      </div>
+      <div class="paper"><img src="../docs/diagrams/the-live-final.svg" alt="The live final: events arrive on a stream, the books are kept from the events, the desk decides and sends quotes and gigs back. Four nets: a request without an answer is recovered in place, a silent stream is opened again, a stopped process starts by itself, and the final is played from a VM near the server."></div>
+      <div class="card">
+          <div class="head"><h3>What the nets were measured to do</h3></div>
+          <div class="scroll"><table>
+            <tr><th>What went wrong</th><th>What happened</th></tr>
+            <tr><td>A request without an answer</td><td>Two recovered in place in one test final; no rejoin of the world</td></tr>
+            <tr><td>A stream that died without a word</td><td>Four opened again from their last event; nothing missed</td></tr>
+            <tr><td>A restart in the middle of a week</td><td>€19,444 a week with one, €19,208 without, on the same four weeks</td></tr>
+            <tr><td>The network dropping three times, and a restart across a midnight</td><td>€17,362 at 97.4% on time, on a week that makes €18,125 in practice mode</td></tr>
+            <tr><td>The hall's Wi-Fi</td><td>29th from it; 2nd from a VM 15 ms from the server</td></tr>
+          </table></div>
+          <p class="note">One look at the books takes 40 ms on average and 0.33 s at worst. The live loop keeps the rhythm of the practice weeks, so every measurement on this page was made at the pace that the final plays at.</p>
+      </div>
+      <footer>
+        <span>Every number here is computed by <code>ui/build.py</code> from <code>results/runs.csv</code>, <code>results/test-final-sunday-0100.csv</code> and <code>desk/fitted.json</code>, or stated in the README.</span>
+        <span>The decisions are in <code>desk/desk.py</code>, each setting with the measurement behind its value. The harness is <code>eval/</code>.</span>
+      </footer>
+    </section>
+  </main>
+</div>
+
+<script>
+const DATA = {"log":{"weeks":11651,"labels":272},"unseen":{"weeks":80,"margin":16013,"on_time":97.0,"lowest":92.6,"orders":412},"ladder":[{"version":"starter","adds":"The kit starter","weeks":20,"margin":-66760,"on_time":51.0,"lowest":38.3,"orders":898},{"version":"v2","adds":"Prices by expected profit, from two fitted curves","weeks":20,"margin":9039,"on_time":96.3,"lowest":91.8,"orders":387},{"version":"v5","adds":"A reader for the dealers' notes","weeks":20,"margin":11725,"on_time":96.6,"lowest":92.7,"orders":446},{"version":"v8","adds":"Return-trip pairs, the day with few drivers, the guard","weeks":20,"margin":12963,"on_time":97.5,"lowest":94.3,"orders":465},{"version":"v9","adds":"A wider radius for pairs","weeks":20,"margin":14027,"on_time":97.7,"lowest":95.5,"orders":479},{"version":"v11","adds":"Prices 6% above the curve's choice","weeks":20,"margin":14785,"on_time":98.1,"lowest":95.6,"orders":415},{"version":"v12","adds":"No low prices to buy trust; a lower minimum chance","weeks":20,"margin":16177,"on_time":97.4,"lowest":95.2,"orders":392},{"version":"v13","adds":"Fee raises before the last hours","weeks":20,"margin":16467,"on_time":97.7,"lowest":93.0,"orders":413},{"version":"v15","adds":"Riskier cars while the week has on-time share to spare","weeks":20,"margin":17384,"on_time":97.2,"lowest":92.8,"orders":419},{"version":"v16","adds":"Trade-ins","weeks":20,"margin":17363,"on_time":97.1,"lowest":93.1,"orders":419},{"version":"v17","adds":"A market learner that follows the competitor's own moves","weeks":20,"margin":17408,"on_time":96.9,"lowest":93.6,"orders":415},{"version":"v18","adds":"The easiest cars open at a lower fee","weeks":20,"margin":17508,"on_time":97.2,"lowest":93.3,"orders":419},{"version":"v19","adds":"A morning alarm for cars that sit","weeks":20,"margin":17416,"on_time":97.2,"lowest":93.3,"orders":419},{"version":"v20","adds":"The guard's reserve follows what the week can still bring","weeks":20,"margin":17431,"on_time":97.1,"lowest":93.3,"orders":419}],"ideas":[{"idea":"Read the notes","why":"A note can move the ready time, the opening hours or the deadline, and the world acts on it.","euros":1850,"words":"failed visits fall from \u20ac515 to \u20ac5 a week"},{"idea":"Return-trip pairs","why":"Two cars in one gig: the driver needs no trip to a pickup and no trip home.","euros":1224,"words":"then +\u20ac1,064 for a wider radius"},{"idea":"A lower minimum chance","why":"The driver curve is cautious: it says 94.7% in time where 97.3% are.","euros":1024,"words":"more orders may wait for a driver"},{"idea":"Prices 6% above the curve's choice","why":"A 6% higher price lost 13% of the orders, where the curve said 24%.","euros":758,"words":""},{"idea":"Fee raises before the last hours","why":"A gig that nobody takes goes up in two steps before the steep last hours.","euros":448,"words":"and more cars on time"},{"idea":"No low prices to buy trust","why":"A low price to win an order and its trust point loses more than the trust returns.","euros":368,"words":""},{"idea":"Riskier cars while there is room","why":"Long lanes earn \u20ac80 to \u20ac100 a car; taken only while the week's late share is under 3%.","euros":367,"words":"then +\u20ac345 in a second step"},{"idea":"The competitor's own moves","why":"Its price list changes shape once a week, and moves by place on some mornings.","euros":314,"words":"on 120 weeks; 0.8 fewer late cars a week"},{"idea":"The easiest cars open lower","why":"Cars that book 94 times in 100 at 0.85 of the typical fee cost less when they open at 0.72.","euros":233,"words":"on 120 weeks; lowest week 91.5% to 93.2%"},{"idea":"Trade-ins","why":"Their list price is 1.9 times the typical fee, against 1.1 for other cars.","euros":204,"words":""},{"idea":"The reserve follows the week","why":"Cars due after the weekend risk 3% late, not 25%; a calm week reserves 15%.","euros":169,"words":"on 200 weeks; +\u20ac181 on the 80 unseen ones"},{"idea":"A cap of 80 on waiting orders","why":"The cap of 60 stopped all pricing on Friday afternoons.","euros":90,"words":"on 160 weeks; better in 29, worse in 1"},{"idea":"The day with few drivers","why":"On one night a week 8 to 24 drivers give their bookings back. That day causes 40% of all late cars.","euros":null,"words":"on time 96.4% to 96.9%, margin unchanged"},{"idea":"The guard","why":"Never more cars due on one day than the week can afford to lose a quarter of.","euros":null,"words":"lowest of 40 weeks: 91.3% to 94.1% on time"}],"pairs":[{"what":"The guard's reserve follows what the week can still bring","base":"bc-35","new":"gv-a","verdict":"kept","remark":"Version 20. Judged once more on 80 weeks that no setting had seen: +\u20ac181 a week there.","weeks":200,"mean":169,"error":37,"better":51,"worse":15,"gains":[-881,-755,-500,-376,-274,-184,-177,-159,-147,-126,-119,-108,-76,-54,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,18,79,90,122,127,133,146,167,167,169,184,192,195,224,225,269,275,278,344,360,371,381,410,411,445,490,512,518,524,587,666,715,744,813,873,922,940,941,1129,1157,1225,1257,1294,1415,1668,1890,2644,2805,2835,3298],"lowest":[92.6,92.6]},{"what":"A cap of 80, not 60, on our orders without a driver","base":"gv-a","new":"mw-80","verdict":"kept","remark":"Version 21. The old cap stopped all pricing on Friday afternoons.","weeks":160,"mean":90,"error":23,"better":29,"worse":1,"gains":[-1298,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,64,77,89,150,159,192,223,239,245,281,377,397,401,486,513,540,550,576,660,663,666,666,810,812,861,984,1090,1104,1821],"lowest":[92.6,92.6]},{"what":"The easiest cars open at a lower fee","base":"q-both","new":"qe-94","verdict":"kept","remark":"Version 18. It also lifts the lowest week, from 91.5% to 93.2% on time.","weeks":120,"mean":233,"error":99,"better":71,"worse":49,"gains":[-2948,-1964,-1964,-1736,-1530,-1527,-1356,-1324,-1083,-998,-923,-910,-891,-883,-862,-843,-801,-795,-728,-727,-725,-696,-669,-612,-532,-479,-458,-451,-427,-423,-403,-368,-355,-350,-348,-223,-196,-189,-175,-174,-99,-97,-93,-88,-51,-38,-32,-20,-12,24,31,34,101,116,120,125,129,159,160,178,183,221,252,261,276,278,307,344,345,346,360,394,395,407,415,438,467,480,543,583,606,619,682,686,687,697,716,742,767,774,779,790,802,804,913,928,929,969,984,1017,1018,1038,1061,1097,1106,1150,1192,1284,1377,1470,1625,1660,1769,1773,1827,2243,2610,3327,3840,4652],"lowest":[91.5,93.2]},{"what":"A market learner that follows the competitor's own moves","base":"v16","new":"q-both","verdict":"kept","remark":"Version 17. It foretells the next answer 3.9% better on weeks with random prices.","weeks":120,"mean":314,"error":105,"better":78,"worse":41,"gains":[-2816,-2616,-2527,-1623,-1425,-1347,-1302,-1156,-1142,-1017,-956,-932,-837,-834,-766,-755,-683,-627,-621,-551,-509,-490,-478,-454,-419,-408,-354,-336,-315,-300,-279,-221,-176,-165,-165,-158,-152,-148,-95,-77,-27,0,4,13,19,32,41,66,74,94,113,119,149,152,164,167,185,208,215,219,232,235,256,262,276,321,338,346,418,430,449,453,454,490,503,509,518,522,571,609,616,626,639,651,731,740,752,761,793,838,856,900,919,928,952,967,972,997,1010,1157,1185,1212,1220,1315,1319,1385,1402,1493,1494,1651,1836,1843,1896,1967,2063,2241,2417,3144,3294,6496],"lowest":[91.6,91.5]},{"what":"A morning alarm for cars that sit","base":"qe-94","new":"bc-35","verdict":"kept as insurance","remark":"Version 19. Nothing on average: it rang in 6 of 80 new weeks, and the hard one made \u20ac4,002 more.","weeks":120,"mean":7,"error":36,"better":4,"worse":8,"gains":[-1254,-666,-591,-350,-325,-278,-126,-96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,184,352,4003],"lowest":[93.2,93.2]},{"what":"A looser guard: 93% on time in the worst case","base":"qe-94","new":"gf-93","verdict":"not taken","remark":"It gains, and the lowest week falls to 90.9% on time. The final is one week.","weeks":80,"mean":198,"error":75,"better":27,"worse":12,"gains":[-1757,-1026,-903,-881,-433,-376,-372,-304,-238,-104,-54,-53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,146,178,192,276,411,425,445,479,504,512,539,539,560,593,605,775,878,940,942,1133,1154,1343,1377,1908,2036,3403],"lowest":[93.2,90.9]},{"what":"The smaller reserve for every week and every day","base":"bc-35","new":"gl-15","verdict":"not taken","remark":"Four of 80 weeks end under 93% on time. Version 20 keeps the part that is safe.","weeks":80,"mean":171,"error":97,"better":22,"worse":12,"gains":[-3380,-1415,-1110,-938,-881,-667,-376,-372,-159,-54,-54,-53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,146,192,410,411,445,512,571,673,722,744,858,878,940,1157,1225,1257,1377,1415,1890,3298,4037],"lowest":[93.2,90.9]},{"what":"A tighter guard: 95% on time in the worst case","base":"qe-94","new":"gd-95","verdict":"not taken","remark":"0.3 points more on time, the lowest week no higher.","weeks":80,"mean":-477,"error":111,"better":18,"worse":42,"gains":[-3753,-3686,-3103,-3070,-2713,-2369,-2001,-1799,-1794,-1765,-1537,-1447,-1293,-1248,-1143,-1130,-1048,-1014,-791,-771,-709,-702,-692,-667,-526,-500,-482,-364,-360,-317,-305,-297,-268,-235,-231,-223,-220,-200,-192,-174,-132,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,41,101,108,130,131,156,173,271,304,348,439,515,652,665,751,1003,1298],"lowest":[93.2,92.7]},{"what":"Prices for same-day cars on the day with few drivers","base":"gv-a","new":"sq-on","verdict":"not taken","remark":"The late cars of that day use up the guard's allowance for the rest of the week.","weeks":80,"mean":-223,"error":88,"better":23,"worse":39,"gains":[-4986,-3491,-1431,-1229,-1128,-1114,-948,-920,-780,-764,-757,-583,-517,-482,-476,-471,-457,-435,-404,-399,-386,-324,-320,-316,-312,-253,-234,-229,-228,-150,-138,-109,-90,-83,-69,-47,-27,-19,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,25,35,82,133,149,180,192,207,240,257,269,297,311,314,317,387,402,442,467,552,960,1049],"lowest":[92.8,91.5]},{"what":"Prices 3% lower on Monday and Tuesday","base":"gv-a","new":"rp-early-week-price","verdict":"not taken","remark":"A teammate's idea: 16 more orders a week, and less margin.","weeks":80,"mean":-255,"error":146,"better":39,"worse":41,"gains":[-6714,-4604,-2638,-2569,-2100,-2050,-1734,-1599,-1546,-1494,-1399,-1338,-1289,-1264,-1231,-933,-899,-861,-784,-760,-742,-691,-666,-660,-636,-624,-553,-508,-401,-307,-282,-269,-202,-160,-116,-90,-70,-41,-41,-29,-17,12,29,57,85,85,122,128,140,143,165,182,228,263,291,432,437,448,477,524,545,552,559,563,579,679,733,790,842,888,924,969,1025,1138,1270,1275,1351,1757,1884,1973],"lowest":[92.8,91.9]}],"rounds":[{"round":"Saturday 00:00","version":"v11","total":74742,"on_time":97.6,"place":""},{"round":"Saturday 09:00","version":"v16","total":77573,"on_time":97.2,"place":"2nd of 68"},{"round":"Saturday 12:00","version":"v17","total":99211,"on_time":97.8,"place":"2nd of 64"},{"round":"Saturday 15:00","version":"v18","total":89578,"on_time":97.1,"place":"6th of 79"},{"round":"Saturday 18:00","version":"v19","total":78279,"on_time":97.0,"place":"7th of 67"},{"round":"Saturday 21:00","version":"v20","total":91134,"on_time":97.8,"place":"5th of 56 when played"},{"round":"Sunday 00:00","version":"v21","total":87687,"on_time":97.2,"place":"3rd of 40 when played"}],"final":[{"name":"HackandSeek","place":1,"points":[[0,0,0],[9,0,7],[10,19,15],[11,65,21],[12,62,23],[13,104,40],[14,120,49],[15,135,69],[16,154,79],[17,173,100],[18,173,104],[19,219,105],[20,232,104],[21,232,105],[27,232,105],[32,232,105],[33,266,111],[34,611,122],[35,1056,131],[36,1404,144],[37,1473,149],[38,1596,155],[39,1847,166],[40,1937,175],[41,2186,188],[42,2346,192],[43,2704,194],[44,2705,194],[45,2649,194],[49,2539,194],[56,2751,194],[57,2771,197],[58,2914,208],[59,3074,211],[60,3513,216],[61,3660,232],[62,3745,245],[63,3967,257],[64,4161,273],[65,4287,295],[66,4612,301],[67,4784,301],[68,4785,302],[69,4783,302],[72,4725,300],[73,4725,299],[80,4725,299],[81,4829,319],[82,5178,330],[83,5454,337],[84,6131,349],[85,6426,361],[86,6862,366],[87,7236,378],[88,7331,383],[89,7935,389],[90,8134,390],[91,8680,390],[92,8771,390],[96,8771,389],[103,8704,389],[104,8652,389],[105,8723,393],[106,9079,395],[107,9486,398],[108,9867,414],[109,10778,415],[110,10929,418],[111,11314,423],[112,11946,430],[113,12587,441],[114,12724,445],[115,12766,445],[116,12736,445],[118,12760,445],[130,12842,445],[131,12981,445],[132,13044,445],[133,13026,445],[176,13040,445],[177,13085,445],[178,13212,445],[179,13258,445],[180,13298,445],[181,13405,445],[182,13602,445],[183,13849,445],[185,13958,445],[186,14160,445],[187,14195,445],[188,14134,445],[194,14143,445],[209,14112,445]],"margin":14112,"orders":445,"on_time":96.0,"by_day":[105,89,108,88,55]},{"name":"DaVinci's Night Shift","place":2,"points":[[0,0,0],[9,0,6],[10,20,14],[11,69,21],[12,69,23],[13,69,38],[14,121,46],[15,127,66],[16,166,72],[17,217,87],[18,268,92],[19,294,93],[20,329,92],[21,353,95],[32,422,95],[33,475,101],[34,702,109],[35,881,117],[36,1000,132],[37,1255,136],[38,1461,138],[39,1728,148],[40,2040,154],[41,2200,166],[42,2309,174],[43,2544,175],[44,2462,176],[56,2548,176],[57,2560,178],[58,2671,186],[59,2838,189],[60,3207,190],[61,3595,203],[62,3634,212],[63,3618,222],[64,3681,232],[65,3836,244],[66,4122,245],[67,4356,245],[68,4429,249],[72,4429,248],[73,4410,247],[80,4610,248],[81,4729,259],[82,5201,267],[83,5485,271],[84,5698,279],[85,5950,286],[86,6253,294],[87,6410,308],[88,6520,312],[89,6800,318],[90,7106,319],[91,7343,320],[92,7484,321],[96,7464,320],[105,7754,324],[106,7952,326],[107,8205,331],[108,8885,346],[109,9273,348],[110,9444,351],[111,9895,355],[112,10242,360],[113,10885,366],[114,11323,371],[115,11787,371],[116,11819,371],[117,11819,371],[129,11879,371],[131,11926,371],[132,11963,371],[133,11906,371],[175,11946,371],[176,11998,371],[177,12077,371],[178,12404,371],[179,12456,371],[180,12687,371],[181,12732,371],[182,12902,371],[183,13041,371],[184,13422,371],[185,13535,371],[186,13621,371],[187,13799,371],[188,13823,371],[236,13730,371],[238,13672,371]],"margin":13672,"orders":371,"on_time":96.8,"by_day":[95,81,73,72,50]},{"name":"Juhus","place":3,"points":[[0,0,0],[9,0,6],[10,20,16],[11,20,24],[12,36,26],[13,130,46],[14,185,57],[15,253,76],[16,253,86],[17,327,103],[18,423,108],[19,478,109],[20,512,110],[21,512,113],[32,523,112],[33,629,116],[34,915,125],[35,1029,135],[36,1208,152],[37,1475,158],[38,1519,163],[39,1581,175],[40,1988,183],[41,2124,195],[42,2580,205],[43,2892,207],[44,2951,208],[47,2938,208],[50,2762,208],[56,2757,208],[57,2819,211],[58,2892,221],[59,3272,225],[60,3368,230],[61,3846,247],[62,3956,262],[63,4120,279],[64,4324,305],[65,4568,319],[66,4935,320],[67,5214,320],[68,5214,323],[72,5201,322],[73,5181,321],[80,5209,321],[81,5406,343],[82,5596,356],[83,5878,365],[84,6038,381],[85,6195,389],[86,6568,397],[87,6981,411],[88,7183,417],[89,7464,424],[90,8037,425],[91,8186,426],[92,8258,427],[96,8235,426],[104,8272,426],[105,8519,432],[106,8706,435],[107,9169,443],[108,9396,458],[109,10182,458],[110,10599,464],[111,10721,472],[112,11243,477],[113,11648,484],[114,11855,489],[115,12064,489],[116,12138,489],[117,12164,489],[119,12164,488],[129,12181,488],[130,12214,488],[131,12251,488],[132,12311,488],[133,12324,488],[176,12349,488],[177,12487,488],[178,12546,488],[179,12577,488],[180,12540,488],[181,12575,488],[182,12744,488],[183,13117,488],[184,13159,488],[185,13149,488],[186,13205,488],[187,13292,488],[188,13341,488],[202,13301,488],[204,13293,488],[206,13288,488],[236,13288,488]],"margin":13288,"orders":488,"on_time":94.1,"by_day":[113,95,115,104,62]},{"name":"Elysa's Secret","place":4,"points":[[0,0,0],[9,0,4],[10,17,11],[11,17,17],[12,17,20],[13,60,27],[14,90,31],[15,103,46],[16,122,54],[17,127,66],[18,167,71],[19,167,71],[20,93,70],[21,93,71],[33,158,74],[34,278,81],[35,342,88],[36,523,96],[37,821,101],[38,944,104],[39,1124,119],[40,1231,126],[41,1493,138],[42,1698,146],[43,1862,148],[44,2007,149],[46,2087,149],[52,2151,149],[56,2173,149],[57,2395,155],[58,2561,166],[59,2617,169],[60,2650,173],[61,2801,184],[62,3070,192],[63,3299,205],[64,3566,224],[65,3695,242],[66,4002,249],[67,4166,249],[68,4166,250],[69,4166,250],[72,4166,249],[79,4266,249],[80,4278,250],[81,4518,264],[82,4894,274],[83,5127,278],[84,5597,288],[85,6246,297],[86,6603,303],[87,7106,312],[88,7219,316],[89,7465,321],[90,7643,321],[91,7771,322],[92,7845,323],[96,7822,322],[104,7831,322],[105,8011,324],[106,8186,324],[107,8863,325],[108,9146,330],[109,9708,330],[110,10235,335],[111,10471,336],[112,10702,340],[113,11145,342],[114,11435,344],[115,11667,344],[116,11769,344],[117,11769,344],[121,11750,344],[130,11777,344],[131,11805,344],[133,11898,344],[176,11971,344],[177,11952,344],[178,12073,344],[179,12249,344],[180,12301,344],[181,12484,344],[182,12787,344],[183,12787,344],[184,13056,344],[185,13155,344],[186,13169,344],[188,13178,344],[236,13178,344]],"margin":13178,"orders":344,"on_time":96.2,"by_day":[71,78,101,73,21]},{"name":"Team Anonymous","place":5,"points":[[0,0,0],[9,0,5],[10,0,10],[11,37,16],[12,37,18],[13,57,24],[14,57,31],[15,57,44],[16,130,52],[17,252,66],[18,385,71],[19,450,71],[20,441,72],[21,441,74],[27,441,73],[31,456,73],[32,405,72],[33,585,76],[34,759,84],[35,929,93],[36,1082,109],[37,1180,114],[38,1310,119],[39,1534,132],[40,1820,142],[41,2479,153],[42,2620,160],[43,2690,162],[44,2830,163],[45,2729,163],[48,2682,163],[56,2708,163],[57,2708,168],[58,2937,177],[59,3189,180],[60,3404,185],[61,3497,200],[62,4082,213],[63,4155,229],[64,4284,248],[65,4581,261],[66,4666,261],[67,4735,261],[68,4735,262],[72,4721,260],[80,4756,260],[81,4833,278],[82,5076,286],[83,5412,291],[84,5604,301],[85,6187,313],[86,6646,320],[87,7019,329],[88,7114,331],[89,7470,337],[90,7570,337],[91,7946,337],[92,8020,338],[96,7998,337],[104,8070,337],[105,8215,341],[106,8646,343],[107,8774,345],[108,9240,358],[109,9619,359],[110,10171,361],[111,11031,364],[112,11456,368],[113,11653,373],[114,12086,377],[115,11896,377],[116,11896,377],[117,11696,377],[119,11696,376],[130,11741,376],[131,11788,376],[133,11848,376],[176,11821,376],[177,11961,376],[178,12140,376],[179,12215,376],[180,12332,376],[181,12496,376],[182,12685,376],[183,12924,376],[184,13195,376],[185,13495,376],[186,13525,376],[187,13403,376],[188,13350,376],[207,13340,376],[208,13336,376],[226,13306,376],[236,13170,376]],"margin":13170,"orders":376,"on_time":92.8,"by_day":[74,89,99,76,39]},{"name":"blip_blip_2","place":6,"points":[[0,0,0],[13,0,12],[14,0,20],[15,0,38],[16,0,49],[17,0,67],[18,0,72],[20,53,71],[21,53,72],[33,81,74],[34,237,83],[35,858,90],[36,1014,104],[37,1108,106],[38,1168,113],[39,1189,127],[40,1370,137],[41,1446,147],[42,1684,155],[43,1759,157],[44,1792,157],[45,1869,157],[46,1869,157],[55,1869,157],[56,1990,157],[57,2082,160],[58,2274,168],[59,2522,171],[60,2741,176],[61,3087,191],[62,3199,201],[63,3250,219],[64,3368,240],[65,3491,255],[66,3539,260],[67,3550,260],[68,3705,263],[69,3737,263],[72,3737,261],[79,3737,261],[80,3798,261],[81,3905,275],[82,4400,283],[83,4806,286],[84,5481,295],[85,5924,307],[86,6183,312],[87,6673,322],[88,6859,327],[89,6951,332],[90,6952,332],[91,7122,333],[92,7290,334],[96,7268,333],[103,7301,333],[104,7353,333],[105,7716,335],[106,8151,336],[107,8682,336],[108,8921,346],[109,9531,346],[110,10005,348],[111,10403,351],[112,10564,356],[113,10848,361],[114,11148,364],[115,11483,364],[116,11569,364],[129,11607,364],[130,11712,364],[132,11752,364],[176,11765,364],[177,11897,364],[178,12024,364],[179,12081,364],[181,12126,364],[182,12430,364],[183,12537,364],[185,12732,364],[186,12951,364],[187,13013,364],[188,13013,364],[208,12928,364],[238,12875,364]],"margin":12875,"orders":364,"on_time":97.5,"by_day":[72,85,106,71,30]},{"name":"Upsala","place":7,"points":[[0,0,0],[9,0,6],[10,34,12],[11,34,19],[12,34,21],[13,126,32],[14,126,38],[15,145,57],[16,145,65],[17,230,77],[18,200,80],[19,200,80],[20,281,80],[21,281,83],[27,217,82],[31,217,82],[32,256,82],[33,388,85],[34,590,94],[35,841,102],[36,1027,115],[37,1357,117],[38,1539,119],[39,1620,129],[40,1655,137],[41,1980,147],[42,1906,153],[43,1940,155],[44,1940,155],[47,1940,155],[55,1993,155],[56,2045,155],[57,2224,158],[58,2361,170],[59,2574,173],[60,2870,179],[61,3278,192],[62,3528,199],[63,3699,214],[64,3651,228],[65,3900,242],[66,3944,245],[67,4058,245],[68,4036,247],[69,4167,247],[72,4167,246],[79,4125,246],[80,4247,246],[81,4352,265],[82,4685,273],[83,5300,275],[84,5642,282],[85,6087,295],[86,6674,302],[87,6764,315],[88,6951,320],[89,7052,324],[90,7224,324],[91,7276,325],[92,7276,325],[96,7257,324],[105,7381,325],[106,7715,327],[107,8442,328],[108,8729,342],[109,9295,343],[110,9549,347],[111,10219,351],[112,10479,355],[113,10699,358],[114,10938,362],[115,10973,362],[116,11019,362],[119,11019,361],[129,11059,361],[130,11059,361],[131,11088,361],[132,11128,361],[133,11251,361],[177,11407,361],[178,11528,361],[179,11671,361],[180,11966,361],[181,12120,361],[182,12401,361],[183,12599,361],[184,12644,361],[185,12957,361],[186,12839,361],[187,12881,361],[188,12846,361],[205,12783,361],[230,12681,361]],"margin":12681,"orders":361,"on_time":96.7,"by_day":[83,72,92,78,37]},{"name":"Northbound Dispatch","place":8,"points":[[0,0,0],[9,0,3],[10,0,8],[11,0,12],[12,0,13],[13,0,20],[14,66,25],[15,108,37],[16,131,45],[17,174,56],[18,236,58],[19,313,58],[20,313,59],[21,347,60],[32,371,60],[33,481,64],[34,597,72],[35,676,80],[36,848,91],[37,1023,95],[38,1179,98],[39,1274,107],[40,1507,110],[41,1573,119],[42,1670,123],[43,1790,125],[44,1790,126],[47,1785,126],[57,1863,131],[58,2061,138],[59,2148,141],[60,2208,144],[61,2476,154],[62,2833,164],[63,2790,174],[64,3138,191],[65,3249,202],[66,3291,202],[67,3510,202],[68,3624,203],[69,3624,203],[72,3611,202],[74,3611,202],[80,3676,202],[81,3922,216],[82,4022,221],[83,4483,225],[84,4672,238],[85,4864,251],[86,5299,258],[87,5622,263],[88,5937,264],[89,6075,268],[90,6457,268],[91,6705,269],[92,6735,270],[95,6653,270],[96,6628,269],[104,6660,269],[105,6706,271],[106,7053,272],[107,7287,275],[108,7854,287],[109,8440,288],[110,8788,291],[111,9206,296],[112,9835,302],[113,10384,307],[114,10649,312],[115,11028,312],[116,10970,312],[129,11001,312],[130,11091,312],[132,11159,312],[133,11214,312],[176,11240,312],[177,11357,312],[178,11442,312],[179,11434,312],[180,11426,312],[181,11584,312],[182,11770,312],[183,11882,312],[184,12007,312],[185,12182,312],[186,12382,312],[187,12500,312],[188,12391,312]],"margin":12391,"orders":312,"on_time":97.4,"by_day":[60,66,77,67,42]},{"name":"car","place":9,"points":[[0,0,0],[9,0,2],[10,0,6],[11,0,8],[12,0,8],[13,37,14],[14,37,16],[15,37,28],[16,37,33],[17,65,46],[18,65,49],[19,65,49],[20,65,51],[21,65,52],[27,65,51],[31,65,51],[33,259,55],[34,376,64],[35,596,74],[36,842,86],[37,989,93],[38,1037,98],[39,1021,114],[40,1061,123],[41,1208,137],[42,1237,145],[43,1550,147],[44,1538,148],[45,1552,148],[46,1552,148],[56,1552,148],[57,1749,154],[58,1903,165],[59,1897,167],[60,2170,171],[61,2203,183],[62,2459,192],[63,2747,208],[64,2867,231],[65,3018,246],[66,3178,251],[67,3410,251],[68,3459,253],[72,3442,252],[73,3421,251],[80,3502,251],[81,3718,264],[82,4048,272],[83,4506,275],[84,5198,282],[85,5503,287],[86,5884,295],[87,6113,302],[88,6395,305],[89,6716,311],[90,6784,312],[91,7077,312],[92,7077,313],[103,7110,313],[104,7146,314],[105,7480,314],[106,7739,314],[107,7931,314],[108,8800,321],[109,9313,321],[110,9368,322],[111,9957,323],[112,10204,324],[113,10350,327],[114,10503,330],[115,10679,330],[116,10739,330],[119,10739,329],[129,10789,329],[130,10880,329],[131,10880,329],[132,10871,329],[133,10915,329],[177,10986,329],[178,11138,329],[179,11105,329],[180,11173,329],[181,11208,329],[182,11424,329],[183,11483,329],[184,11574,329],[185,11575,329],[186,11707,329],[238,11625,329]],"margin":11625,"orders":329,"on_time":94.8,"by_day":[52,96,105,60,17]},{"name":"Team Moonshot","place":10,"points":[[0,0,0],[9,0,7],[10,14,13],[11,29,21],[12,29,22],[13,61,34],[14,96,40],[15,96,55],[16,129,64],[17,129,74],[18,129,76],[19,99,77],[20,141,76],[21,178,78],[31,178,78],[32,188,78],[33,444,80],[34,539,89],[35,715,98],[36,908,110],[37,1274,114],[38,1369,118],[39,1553,135],[40,1665,141],[41,1802,152],[42,1838,157],[43,1825,159],[44,1858,160],[45,1858,160],[46,1858,160],[55,1858,160],[56,1858,160],[57,1940,165],[58,2145,173],[59,2244,176],[60,2388,181],[61,2440,194],[62,2734,204],[63,2779,219],[64,3078,235],[65,3317,251],[66,3626,252],[67,3641,252],[68,3628,254],[69,3633,254],[72,3633,253],[74,3466,253],[80,3557,253],[81,3668,271],[82,4164,277],[83,4616,283],[84,4753,291],[85,5047,299],[86,5386,306],[87,5617,316],[88,5805,320],[89,6024,325],[90,6142,325],[91,6437,325],[92,6468,325],[96,6444,324],[104,6451,324],[105,6669,325],[106,6934,326],[107,7397,328],[108,7956,334],[109,8185,337],[110,8853,341],[111,9565,344],[112,9884,349],[113,10222,355],[114,10536,360],[115,10615,360],[116,10740,360],[118,10774,360],[129,10815,360],[130,10872,360],[131,10900,360],[132,10991,360],[133,11066,360],[176,11189,360],[177,11288,360],[179,11388,360],[181,11570,360],[182,11585,360],[183,11806,360],[184,11904,360],[185,11745,360],[188,11745,360],[238,11509,360]],"margin":11509,"orders":360,"on_time":95.8,"by_day":[78,82,94,71,35]}],"not_taken":[{"what":"Direct offers to a driver who has just delivered nearby","label":"explore-offers","result":"none of 6,491 offers was accepted"},{"what":"A detector for the region where the competitor is down","label":"v9-outage","result":"right in 18 of 20 weeks, but too late in the day to earn"},{"what":"A lower price when the car pairs with a waiting order","label":"v10-pairquote","result":"the pair seldom forms"},{"what":"Driver curves with products of their features","label":"v17b","result":"rank better on paper (AUC 0.869 against 0.851), make less in play"},{"what":"Two beliefs each morning: an ordinary day, a price war","label":"m-regimes","result":"\u20ac430 to \u20ac640 a week less than one belief"},{"what":"A new car held off the app, to wait for a partner","label":"pi-30","result":"15 more pairs a week, and \u20ac65 to \u20ac314 less"},{"what":"A price factor that follows the market's level","label":"gl-02","result":"19 more orders in cheap weeks, \u20ac202 a week less over all"},{"what":"The lane's pair saving taken off the car's cost","label":"pp-10","result":"26 more orders a week, \u20ac85 less, inside the noise"},{"what":"A higher opening fee for the cars that book least easily","label":"qh-75","result":"\u20ac292 a week less, on time unchanged"},{"what":"The learner fed with the first option's price only","label":"rp-learn-fastest","result":"\u20ac336 a week less"},{"what":"The shape of the dealer curve refitted by price band","label":"ds-on","result":"\u20ac149 a week less, lowest week 90.8% on time"},{"what":"A lower on-time target for the guard, 92% for 94%","label":"gt-92","result":"\u20ac3 a week less: no change that 80 weeks can show"}],"dealer":{"slope":12.303,"level":3.662,"spread":1.617}};
+const $ = (id) => document.getElementById(id);
+const euro = (v) => (v < 0 ? "−€" : "€") + Math.abs(Math.round(v)).toLocaleString("en-US");
+const signed = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + "€" + Math.abs(Math.round(v)).toLocaleString("en-US");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const US = "DaVinci's Night Shift";
+
+// Figures
+$("figures").innerHTML = [
+  [euro(DATA.unseen.margin), "a week on 80 level 8 weeks that no setting was tuned on"],
+  [DATA.unseen.on_time.toFixed(1) + "%", "of the orders on time there; lowest week " + DATA.unseen.lowest + "%, the gate is 90%"],
+  ["2nd of 236", "teams in the Sunday 01:00 test final, played from the VM"],
+  [DATA.log.weeks.toLocaleString("en-US"), "practice weeks in the log, under " + DATA.log.labels + " labels"],
+].map(([big, small]) => `<div class="figure"><b>${big}</b><span>${small}</span></div>`).join("");
+
+// The ladder of versions
+(() => {
+  const top = Math.max(...DATA.ladder.map((r) => r.margin));
+  $("ladder").innerHTML = `<tr><th>Version</th><th>What it adds</th><th>Margin a week</th><th class="num hide-narrow">On time</th><th class="num hide-narrow">Lowest week</th></tr>` +
+    DATA.ladder.map((r) => `<tr><td class="mono">${r.version}</td><td>${esc(r.adds)}</td><td class="bar">${r.margin < 0
+      ? `<div class="track"><span class="loss">${euro(r.margin)}</span></div>`
+      : `<div class="track"><i style="width:${(70 * r.margin / top).toFixed(1)}%"></i><span>${euro(r.margin)}</span></div>`}</td><td class="num hide-narrow">${r.on_time.toFixed(1)}%</td><td class="num hide-narrow">${r.lowest.toFixed(1)}%</td></tr>`).join("");
+  $("ladder-note").textContent = "The last steps are too small for 20 weeks to show, so 80 and then 160 fresh weeks judged them: they are under Week by week. Version 21 makes " +
+    euro(DATA.unseen.margin) + " a week on the 80 unseen weeks, with " + DATA.unseen.orders + " orders a week.";
+})();
+
+// What each idea is worth
+(() => {
+  const top = Math.max(...DATA.ideas.map((r) => r.euros || 0));
+  $("ideas").innerHTML = `<tr><th>Idea</th><th>Effect a week</th><th class="hide-narrow">And</th></tr>` + DATA.ideas.map((r) => `<tr><td class="idea"><b>${esc(r.idea)}</b><small>${esc(r.why)}</small></td><td class="bar">${r.euros
+    ? `<div class="track"><i style="width:${(70 * r.euros / top).toFixed(1)}%"></i><span>${signed(r.euros)}</span></div>`
+    : `<span class="chip kept">keeps the week ranked</span>`}</td><td class="hide-narrow"><small class="note">${esc(r.words)}</small></td></tr>`).join("");
+})();
+
+// A tooltip that follows the pointer inside a chart
+function tipFor(box) {
+  const tip = document.createElement("div");
+  tip.className = "tip"; tip.hidden = true; box.appendChild(tip);
+  return {
+    show(html, x, y) {
+      tip.innerHTML = html; tip.hidden = false;
+      const half = tip.offsetWidth / 2, wide = box.clientWidth;
+      tip.style.left = Math.max(half, Math.min(wide - half, x)) + "px"; tip.style.top = Math.max(tip.offsetHeight + 4, y - 10) + "px";
+    },
+    hide() { tip.hidden = true; },
+  };
+}
+const ticks = (low, high, step) => { const out = []; for (let v = Math.ceil(low / step) * step; v <= high + 1e-9; v += step) out.push(v); return out; };
+
+// Week by week: one bar a week, sorted
+let chosen = 0;
+function drawPair() {
+  const p = DATA.pairs[chosen], box = $("pair-chart");
+  const W = 640, H = 260, left = 54, right = 8, top = 14, bottom = 24;
+  const low = Math.min(0, p.gains[0]), high = Math.max(0, p.gains[p.gains.length - 1]);
+  const span = high - low || 1, step = span > 6000 ? 2000 : span > 3000 ? 1000 : 500;
+  const y = (v) => top + (H - top - bottom) * (high - v) / span;
+  const each = (W - left - right) / p.gains.length, bar = Math.max(1, each - (each > 4 ? 2 : each > 2.5 ? 1 : 0));
+  const bars = p.gains.map((g, i) => g === 0 ? "" : `<rect x="${(left + i * each).toFixed(1)}" y="${Math.min(y(g), y(0)).toFixed(1)}" width="${bar.toFixed(1)}" height="${Math.max(1, Math.abs(y(g) - y(0))).toFixed(1)}" fill="var(${g > 0 ? "--teal" : "--orange"})"/>`).join("");
+  const lines = ticks(low, high, step).map((v) => `<line class="grid" x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}"/><text x="${left - 8}" y="${y(v) + 4}" text-anchor="end">${signed(v)}</text>`).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(p.what)}: the difference in each of ${p.weeks} weeks, sorted">${lines}
+    <line class="axis" x1="${left}" x2="${W - right}" y1="${y(0)}" y2="${y(0)}"/>${bars}
+    <line x1="${left}" x2="${W - right}" y1="${y(p.mean)}" y2="${y(p.mean)}" stroke="var(--ink)" stroke-width="2" stroke-dasharray="6 4"/>
+    <text class="strong" x="${left + 6}" y="${y(Math.max(0, p.mean)) - 8}">mean ${signed(p.mean)}</text>
+    <text x="${left}" y="${H - 6}">the week that lost most</text><text x="${W - right}" y="${H - 6}" text-anchor="end">the week that gained most</text></svg>`;
+  const tip = tipFor(box), svg = box.querySelector("svg");
+  svg.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(p.gains.length - 1, Math.floor((x - left) / each)));
+    tip.show(`<b>${signed(p.gains[i]) === "€0" ? "unchanged" : signed(p.gains[i])}</b> · week ${i + 1} of ${p.weeks}`, e.clientX - r.left, (y(Math.max(0, p.gains[i])) * r.height) / H);
+  });
+  svg.addEventListener("pointerleave", () => tip.hide());
+  const kept = p.verdict.startsWith("kept"), same = p.gains.filter((g) => g === 0).length;
+  $("verdict").innerHTML = `<b>${signed(p.mean)}</b><span>a week, standard error €${p.error}</span><span class="chip ${kept ? "kept" : "dropped"}">${esc(p.verdict)}</span>`;
+  $("pair-facts").innerHTML = `<span><b>${p.weeks}</b> weeks</span><span><b>${p.better}</b> better</span><span><b>${p.worse}</b> worse</span><span><b>${same}</b> unchanged</span><span>lowest week <b>${p.lowest[0].toFixed(1)}%</b> on time before, <b>${p.lowest[1].toFixed(1)}%</b> after</span>`;
+  $("pair-remark").innerHTML = esc(p.remark) + ` In the log: <code>${esc(p.new)}</code> against <code>${esc(p.base)}</code>.`;
+  document.querySelectorAll("#picker button").forEach((b, i) => b.setAttribute("aria-pressed", i === chosen));
+}
+$("picker").innerHTML = DATA.pairs.map((p, i) => `<button type="button" id="pair-${i}" class="${p.verdict.startsWith("kept") ? "kept" : ""}" aria-pressed="false"><i></i><span>${esc(p.what)}</span><em>${signed(p.mean)}</em></button>`).join("");
+$("picker").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { chosen = +b.id.slice(5); drawPair(); } });
+drawPair();
+
+// The price rule
+function drawRule() {
+  const cost = +$("cost").value, shift = +$("level").value, trust = +$("trust").value, list = 100;
+  const { slope, level, spread } = DATA.dealer;
+  const chance = (price) => 1 / (1 + Math.exp(-(level + shift * spread - slope * Math.log(price / list / (1 + trust / 100)))));
+  const profit = (price) => chance(price) * (price - cost);
+  let best = cost;
+  for (let price = Math.max(cost, 60); price <= 200; price += 0.25) if (profit(price) > profit(best)) best = price;
+  const quoted = best * 1.06, from = 40, to = 180;
+  const W = 640, H = 300, left = 44, right = 12, gap = 26, top = 12, bottom = 24, tall = (H - top - bottom - gap) / 2;
+  const x = (price) => left + (W - left - right) * (price - from) / (to - from);
+  const peak = Math.max(10, Math.ceil(profit(best) / 10) * 10);
+  const y1 = (c) => top + tall * (1 - c), y2 = (v) => top + tall + gap + tall * (1 - Math.max(0, v) / peak);
+  const path = (f, y) => { let d = ""; for (let price = from; price <= to; price += 1) d += (d ? "L" : "M") + x(price).toFixed(1) + " " + y(f(price)).toFixed(1); return d; };
+  $("rule-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="The chance that the dealer takes each price, and the expected profit at each price">
+    ${[0, 0.5, 1].map((c) => `<line class="grid" x1="${left}" x2="${W - right}" y1="${y1(c)}" y2="${y1(c)}"/><text x="${left - 8}" y="${y1(c) + 4}" text-anchor="end">${c * 100}%</text>`).join("")}
+    ${[0, peak / 2, peak].map((v) => `<line class="grid" x1="${left}" x2="${W - right}" y1="${y2(v)}" y2="${y2(v)}"/><text x="${left - 8}" y="${y2(v) + 4}" text-anchor="end">€${v}</text>`).join("")}
+    ${ticks(from, to, 20).map((price) => `<text x="${x(price)}" y="${H - 6}" text-anchor="middle">€${price}</text>`).join("")}
+    <line x1="${x(cost)}" x2="${x(cost)}" y1="${top + tall + gap}" y2="${H - bottom}" stroke="var(--muted)" stroke-dasharray="3 4"/>
+    <text x="${x(cost) + 6}" y="${top + tall + gap + 10}">the driver's cost</text>
+    <path d="${path(chance, y1)}" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="${path(profit, y2)}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
+    <line x1="${x(quoted)}" x2="${x(quoted)}" y1="${top}" y2="${H - bottom}" stroke="var(--red)" stroke-width="2"/>
+    <circle cx="${x(quoted)}" cy="${y1(chance(quoted))}" r="5" fill="var(--red)" stroke="var(--card)" stroke-width="2"/>
+    <circle cx="${x(quoted)}" cy="${y2(profit(quoted))}" r="5" fill="var(--red)" stroke="var(--card)" stroke-width="2"/>
+    <circle cx="${x(best)}" cy="${y2(profit(best))}" r="4" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/>
+    <text x="${x(best) - 8}" y="${y2(profit(best)) - 8}" text-anchor="end">the curve's choice</text></svg>`;
+  $("cost-out").textContent = "€" + cost;
+  $("level-out").textContent = shift <= -1.2 ? "a price war" : shift < -0.3 ? "cheap" : shift <= 0.3 ? "an ordinary day" : shift < 1.2 ? "dear" : "very dear";
+  $("trust-out").textContent = trust + (trust === 1 ? " order" : " orders");
+  $("quoted").textContent = "€" + quoted.toFixed(0);
+  $("chance").textContent = (100 * chance(quoted)).toFixed(0) + "%";
+  $("profit").textContent = "€" + profit(quoted).toFixed(0);
+}
+["cost", "level", "trust"].forEach((id) => $(id).addEventListener("input", drawRule));
+drawRule();
+
+// The test final, hour by hour
+(() => {
+  const teams = DATA.final, box = $("race"), days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+  const last = Math.max(...teams.map((t) => t.points[t.points.length - 1][0])), high = 15000;
+  const W = 960, H = 340, left = 56, right = 14, top = 12, bottom = 26;
+  const x = (hour) => left + (W - left - right) * hour / last, y = (v) => top + (H - top - bottom) * (high - v) / high;
+  const at = (team, hour) => { let value = 0; for (const [h, margin] of team.points) { if (h > hour) break; value = margin; } return value; };
+  const line = (team) => team.points.map(([hour, margin], i) => (i ? "L" : "M") + x(hour).toFixed(1) + " " + y(margin).toFixed(1)).join("") + "L" + x(last).toFixed(1) + " " + y(team.margin).toFixed(1);
+  const others = teams.filter((t) => t.name !== US), us = teams.find((t) => t.name === US);
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Margin of the first ten teams through the test final's week">
+    ${ticks(0, high, 5000).map((v) => `<line class="grid" x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}"/><text x="${left - 8}" y="${y(v) + 4}" text-anchor="end">${euro(v)}</text>`).join("")}
+    ${days.map((day, i) => i * 24 > last ? "" : `<line class="grid" x1="${x(i * 24)}" x2="${x(i * 24)}" y1="${top}" y2="${H - bottom}"/><text x="${x(i * 24) + 6}" y="${H - 8}">${day}</text>`).join("")}
+    ${others.map((t) => `<path d="${line(t)}" fill="none" stroke="var(--context)" stroke-width="1.5" stroke-linejoin="round"/>`).join("")}
+    <path d="${line(us)}" fill="none" stroke="var(--red)" stroke-width="2.75" stroke-linejoin="round"/>
+    <circle cx="${x(last)}" cy="${y(us.margin)}" r="5" fill="var(--red)" stroke="var(--card)" stroke-width="2"/>
+    <line id="cross" x1="0" x2="0" y1="${top}" y2="${H - bottom}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg>`;
+  const tip = tipFor(box), svg = box.querySelector("svg"), cross = svg.querySelector("#cross");
+  svg.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), hour = Math.max(0, Math.min(last, Math.round(((e.clientX - r.left) * W / r.width - left) / (W - left - right) * last)));
+    cross.setAttribute("x1", x(hour)); cross.setAttribute("x2", x(hour)); cross.setAttribute("visibility", "visible");
+    const rows = teams.map((t) => [t.name, at(t, hour)]).sort((a, b) => b[1] - a[1]);
+    tip.show(`<b>${days[Math.floor(hour / 24)]} ${String(hour % 24).padStart(2, "0")}:00</b><br>` + rows.map(([name, v], i) => `<span class="${name === US ? "me" : ""}">${i + 1}. ${esc(name)} ${euro(v)}</span>`).join("<br>"), e.clientX - r.left, r.height * 0.9);
+  });
+  svg.addEventListener("pointerleave", () => { tip.hide(); cross.setAttribute("visibility", "hidden"); });
+
+  const all = teams.flatMap((t) => t.by_day), low = Math.min(...all), top2 = Math.max(...all);
+  $("days").innerHTML = `<tr><th class="num" style="text-align:left">#</th><th>Team</th>${days.slice(0, 5).map((d) => `<th style="text-align:center;padding-right:0">${d}</th>`).join("")}<th class="num">Orders</th><th class="num">On time</th><th class="num">Margin</th></tr>` +
+    teams.map((t) => `<tr class="${t.name === US ? "us" : ""}"><td class="mono">${t.place}</td><td>${esc(t.name)}</td>${t.by_day.map((n) => `<td class="heat"><span style="background:color-mix(in srgb, var(--teal) ${(6 + 58 * (n - low) / (top2 - low)).toFixed(0)}%, var(--card))">${n}</span></td>`).join("")}<td class="num">${t.orders}</td><td class="num">${t.on_time.toFixed(1)}%</td><td class="num">${euro(t.margin)}</td></tr>`).join("");
+})();
+
+// Ranking rounds
+(() => {
+  const top = Math.max(...DATA.rounds.map((r) => r.total));
+  $("rounds-table").innerHTML = `<tr><th>Round</th><th>Five weeks</th><th class="num">Place</th></tr>` + DATA.rounds.map((r) => `<tr><td>${r.round}<br><span class="note mono">${r.version} · ${r.on_time.toFixed(1)}% on time</span></td><td class="bar"><div class="track"><i style="width:${(62 * r.total / top).toFixed(1)}%"></i><span>${euro(r.total)}</span></div></td><td class="num">${r.place || "not noted"}</td></tr>`).join("");
+})();
+
+$("dropped").innerHTML = DATA.not_taken.map((r) => `<div><b>${esc(r.what)}</b><span>${esc(r.result)} · <code>${esc(r.label)}</code></span></div>`).join("");
+
+// The rail shows which room is in view
+if ("IntersectionObserver" in window) {
+  const links = [...document.querySelectorAll(".rail nav a")];
+  const seen = new IntersectionObserver((entries) => entries.forEach((entry) => {
+    if (entry.isIntersecting) links.forEach((a) => a.classList.toggle("here", a.getAttribute("href") === "#" + entry.target.id));
+  }), { rootMargin: "-20% 0px -70% 0px" });
+  document.querySelectorAll("main section").forEach((s) => seen.observe(s));
+}
+</script>
+</body>
+</html>
