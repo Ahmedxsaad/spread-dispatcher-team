@@ -4,11 +4,11 @@ Spread is Bahn Express's challenge at Junction 2026: one simulated week of a car
 
 **In short.** The desk makes two estimates, applies one rule and keeps one guard. Version 21 makes €16,013 a week on 80 level 8 weeks that no setting was tuned on, at 97.0% on time, with the lowest week at 92.6%. In the Sunday 01:00 test final it was second of 236 teams. Every idea was measured on the same weeks with it and without it: the 11,651 practice weeks are in `results/runs.csv` under 272 labels, and what did not work is listed below with its number.
 
-![How the desk decides](docs/diagrams/how-the-desk-decides.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/how-the-desk-decides.dark.png"><img alt="How the desk decides" src="docs/diagrams/how-the-desk-decides.png"></picture>
 
-This repository is our system (`desk/`), the harness that measures it (`eval/`), the log of every week it has played (`results/runs.csv`), and a page that shows the evidence with charts (`ui/index.html`: open it in a browser).
+This repository is our system (`desk/`), the harness that measures it (`eval/`), the log of every week it has played (`results/runs.csv`), and a page that replays a week on a map of Finland and shows the evidence with charts (`ui/index.html`: open it in a browser).
 
-![The page: the result, the desk, the evidence, the rounds and the live final](docs/control-room.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/control-room.dark.png"><img alt="The page: a week of version 21 replayed on a map of Finland, then the desk, the evidence, the rounds and the live final" src="docs/control-room.png"></picture>
 
 | To read about | Go to |
 |---|---|
@@ -118,7 +118,7 @@ On top of that, each idea below has a reason and a measured effect, on the same 
 
 ## How an idea becomes a default
 
-![How an idea becomes a default](docs/diagrams/how-an-idea-becomes-a-default.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/how-an-idea-becomes-a-default.dark.png"><img alt="How an idea becomes a default" src="docs/diagrams/how-an-idea-becomes-a-default.png"></picture>
 
 A practice week is deterministic: the same seed, level and actions give the same week to the cent. So an idea is a setting that is off, played on the same 80 weeks with it and without it, and each week is compared with itself (`eval.run`, `eval.compare`).
 
@@ -216,15 +216,16 @@ python3 docs/diagrams/draw.py                                  # the three diagr
 | `tests/` | Tests of the live loop's recovery, the stream's time limit, the dealer curve and the guard |
 | `results/runs.csv` | One row for each week played: 11,651 weeks under 272 labels |
 | `results/test-final-sunday-0100.csv` | The public feed of the Sunday 01:00 test final as we recorded it: the first ten teams, hour by hour |
-| `ui/` | The page that shows the evidence: `build.py` computes every number from the log, `page.html` is the layout, `index.html` the result |
-| `docs/diagrams/` | The three diagrams: `draw.py` writes the Excalidraw scenes, from which the PNG and SVG files are rendered |
+| `results/replay.json` | One week of version 21 (`check-35`) as the page's map replays it: each request, each car's four moments, the margin as it grew. `analysis/replay.py` writes it from the world's event history |
+| `ui/` | The page: `build.py` computes every number from the log, `page.html` is the layout, `index.html` the result, `finland.json` the country's outline (Natural Earth, public domain) |
+| `docs/diagrams/` | The three diagrams: `draw.py` writes the Excalidraw scenes, from which the PNG and SVG files are rendered, each for a light and a dark page |
 | `RUNBOOK.md` | The morning of the final, step by step |
 | `AGENTS.md` | The rules for a teammate's coding agent: what protects the final, and what counts as evidence |
 | `context/` | The challenge's rules, handbook and kits, and our first notes |
 
 ## Robustness
 
-![The live final](docs/diagrams/the-live-final.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/the-live-final.dark.png"><img alt="The live final" src="docs/diagrams/the-live-final.png"></picture>
 
 - The desk rebuilds its books from the world's event history and its own list of orders and gigs. With lost requests and lost answers injected into every kind of call, four weeks scored the same as without (`flaky` tests).
 - The live loop played the Saturday 14:00 test final, a week joined on Thursday: 9th of 55 ranked teams, €3,375, 98.5% on time, no failed look and no late quote.

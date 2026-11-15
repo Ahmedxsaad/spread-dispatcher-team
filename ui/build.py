@@ -3,7 +3,9 @@
     python3 ui/build.py
 
 Every number on the page is computed here from results/runs.csv, the recorded test final and desk/fitted.json,
-or copied from the README where a round's rank is stated. The layout is ui/page.html.
+or copied from the README where a round's rank is stated. The layout is ui/page.html. The map replays the week
+in results/replay.json (analysis/replay.py writes it) on Finland's outline in ui/finland.json, which is
+Natural Earth's public-domain 1:50m country outline, simplified.
 """
 from __future__ import annotations
 
@@ -150,7 +152,12 @@ def data() -> dict:
         played = [(row["label"], row["status"]) for row in csv.DictReader(log)]
     unseen = summary([by["mw-80"][f"check-{i:02d}"] for i in range(1, 81)])
     fitted = json.loads((ROOT / "desk/fitted.json").read_text())
+    week = json.loads((ROOT / "results/replay.json").read_text())      # written by analysis/replay.py
+    row = by["mw-80"][week["seed"]]
+    week.update(outline=json.loads((ROOT / "ui/finland.json").read_text())["rings"], total=round(float(row["margin_eur"])),
+                won=int(row["won"]), on_time=float(row["on_time_pct"]))
     return {
+        "week": week,
         "log": {"weeks": len(played), "labels": len({label for label, _ in played})},
         "unseen": unseen, "ladder": ladder, "ideas": [dict(zip(("idea", "why", "euros", "words"), idea)) for idea in IDEAS],
         "pairs": pairs, "rounds": [dict(zip(("round", "version", "total", "on_time", "place"), r)) for r in ROUNDS],
@@ -164,9 +171,9 @@ def page(inline: bool) -> str:
     """The page with its data. inline: the diagrams go into the file itself, for a page that is hosted alone."""
     text = (ROOT / "ui/page.html").read_text().replace("/*DATA*/", json.dumps(data(), separators=(",", ":")))
     for name in ("how-the-desk-decides", "how-an-idea-becomes-a-default", "the-live-final"):
-        picture = ROOT / f"docs/diagrams/{name}.svg"
-        source = "data:image/svg+xml;base64," + base64.b64encode(picture.read_bytes()).decode() if inline else f"../docs/diagrams/{name}.svg"
-        text = text.replace(f"DIAGRAM:{name}", source)
+        for mark, picture in ((f"DIAGRAM:{name}", ROOT / f"docs/diagrams/{name}.svg"), (f"NIGHT:{name}", ROOT / f"docs/diagrams/{name}.dark.svg")):
+            source = "data:image/svg+xml;base64," + base64.b64encode(picture.read_bytes()).decode() if inline else f"../docs/diagrams/{picture.name}"
+            text = text.replace(mark, source)
     return text
 
 

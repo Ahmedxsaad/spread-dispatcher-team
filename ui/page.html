@@ -6,6 +6,7 @@
 :root {
   --page: #f5f3ec; --card: #fffef7; --ink: #12110e; --ink-2: #423d33; --muted: #726958; --line: #e6e1d6;
   --red: #e63950; --teal: #1f93a8; --orange: #e8590c; --green: #1f8f5f; --context: #cdc6b6; --paper: #ffffff;
+  --land: #f0ebe0; --land-night: #e6e0d2; --coast: #d2cab8; --by-day: block; --by-night: none;
   --display: "Unbounded", "Poppins", system-ui, sans-serif;
   --body: "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Reddit Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -13,12 +14,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --page: #141310; --card: #1d1b17; --ink: #f3efe4; --ink-2: #d2cab8; --muted: #a39a87; --line: #343027;
-    --red: #f0556a; --teal: #35a3b8; --orange: #df6630; --green: #3fb984; --context: #4d473b; --paper: #ffffff; color-scheme: dark;
+    --red: #f0556a; --teal: #35a3b8; --orange: #df6630; --green: #3fb984; --context: #4d473b; --paper: #121212;
+    --land: #27241d; --land-night: #1f1d18; --coast: #40392d; --by-day: none; --by-night: block; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --page: #141310; --card: #1d1b17; --ink: #f3efe4; --ink-2: #d2cab8; --muted: #a39a87; --line: #343027;
-  --red: #f0556a; --teal: #35a3b8; --orange: #df6630; --green: #3fb984; --context: #4d473b; --paper: #ffffff; color-scheme: dark;
+  --red: #f0556a; --teal: #35a3b8; --orange: #df6630; --green: #3fb984; --context: #4d473b; --paper: #121212;
+    --land: #27241d; --land-night: #1f1d18; --coast: #40392d; --by-day: none; --by-night: block; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 400 15px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
@@ -52,7 +55,9 @@ p { margin: 0; max-width: 68ch; color: var(--ink-2); }
 .head { display: flex; flex-direction: column; gap: 8px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .paper { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 12px; overflow-x: auto; }
-.paper img { display: block; width: 100%; min-width: 760px; max-width: none; height: auto; }
+.paper img { width: 100%; min-width: 760px; max-width: none; height: auto; }
+.paper img.day { display: var(--by-day); }
+.paper img.night { display: var(--by-night); }
 .split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px; align-items: start; }
 .split > div { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -64,11 +69,50 @@ p { margin: 0; max-width: 68ch; color: var(--ink-2); }
 .chip.dropped::before { background: var(--orange); }
 
 /* Figures */
-.figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--card); overflow: hidden; }
-.figure { padding: 22px 24px; display: flex; flex-direction: column; gap: 6px; border-left: 1px solid var(--line); }
-.figure:first-child { border-left: 0; }
+.figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); border-radius: 16px; background: var(--line); overflow: hidden; }
+.figure { padding: 20px 22px; display: flex; flex-direction: column; gap: 6px; background: var(--card); }
 .figure b { font: 600 26px/1.1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .figure span { font-size: 13px; color: var(--muted); }
+
+/* The week on the map */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 470px); gap: 28px; align-items: start; }
+.hero > div { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.map { margin: 0; padding: 14px 14px 18px; gap: 10px; }
+.map svg { display: block; width: 100%; height: auto; }
+.map .land { fill: var(--land); stroke: var(--coast); stroke-width: 1; stroke-linejoin: round; transition: fill .8s; }
+.map svg.dark-hours .land { fill: var(--land-night); }
+.map .lane { fill: none; stroke: var(--muted); stroke-linecap: round; }
+.map .town { fill: var(--ink-2); }
+.map .name { font: 500 11.5px var(--body); fill: var(--muted); paint-order: stroke; stroke: var(--land); stroke-width: 3px; stroke-linejoin: round; }
+.map .wait { fill: var(--card); stroke: var(--ink-2); stroke-width: 1.2; }
+.map .has-driver { fill: var(--teal); stroke: var(--card); stroke-width: .8; }
+.map .trail { fill: none; stroke: var(--teal); stroke-width: 1.1; opacity: .45; }
+.map .trail.behind { stroke: var(--orange); }
+.map .car { fill: var(--teal); stroke: var(--card); stroke-width: 1.2; }
+.map .car.behind { fill: var(--orange); }
+.map .ping { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+.map .ping.ours { stroke: var(--red); stroke-width: 1.8; }
+.console { gap: 14px; padding: 20px 22px; }
+.clock-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.clock-row > div { display: flex; flex-direction: column; gap: 2px; }
+.clock { font: 600 30px/1.1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.pill { all: unset; cursor: pointer; font: 500 13px var(--body); padding: 7px 16px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.pill:hover { border-color: var(--muted); }
+.pill.main { background: var(--ink); color: var(--page); border-color: var(--ink); min-width: 54px; text-align: center; }
+.scrub { display: flex; flex-direction: column; gap: 2px; }
+.scrub svg { display: block; width: 100%; height: auto; }
+.scrub .dark-band { fill: var(--page); }
+.scrub .rise { fill: color-mix(in srgb, var(--teal) 22%, var(--card)); stroke: none; }
+.scrub .edge { fill: none; stroke: var(--teal); stroke-width: 1.5; }
+.scrub .now { stroke: var(--red); stroke-width: 2; }
+.scrub input { width: 100%; margin: 0; accent-color: var(--ink); }
+.moments { display: flex; flex-wrap: wrap; gap: 6px; }
+.counts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+.counts div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.counts b { font: 600 17px/1.2 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.counts span { font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+.legend i.ring { width: 9px; height: 9px; border-radius: 50%; background: var(--card); border: 1.5px solid var(--ink-2); }
+.legend i.dot { width: 9px; height: 9px; border-radius: 50%; }
 
 /* Tables */
 .scroll { overflow-x: auto; }
@@ -143,10 +187,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
   .rail nav { flex-direction: row; flex-wrap: wrap; gap: 4px; }
   .rail nav a { padding: 6px 10px; background: var(--card); border: 1px solid var(--line); }
   .rail .plays { display: none; }
-  .two, .runs, .list, .split { grid-template-columns: minmax(0, 1fr); }
-  .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .figure:nth-child(3) { border-left: 0; }
-  .figure:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .two, .runs, .list, .split, .hero { grid-template-columns: minmax(0, 1fr); }
   main { gap: 56px; }
 }
 @media (max-width: 480px) {
@@ -154,6 +195,8 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
   .figure { padding: 16px; }
   .figure b { font-size: 21px; }
   .answer { grid-template-columns: minmax(0, 1fr); }
+  .counts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .clock { font-size: 24px; }
   .hide-narrow { display: none; }
   td.bar { min-width: 112px; width: 44%; }
 }
@@ -164,7 +207,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
   <aside class="rail">
     <div class="brand"><b>Night Shift</b><span>DaVinci's Night Shift · Spread, Junction 2026</span></div>
     <nav aria-label="Rooms">
-      <a href="#result">Result</a>
+      <a href="#result">The week</a>
       <a href="#desk">The desk</a>
       <a href="#evidence">Evidence</a>
       <a href="#rounds">Rounds and finals</a>
@@ -175,13 +218,38 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
   </aside>
 
   <main>
-    <section id="result">
-      <div class="head">
-        <span class="eyebrow">Bahn Express · one simulated week of car transport in Finland</span>
-        <h1>A dispatcher that prices by what it has measured</h1>
-        <p class="lede">Dealers ask for prices, and a competitor answers them too. Each car that we win needs a freelance driver, found by posting a gig with a fee. The score is the margin; a team counts only with 90% of its orders on time. The desk makes two estimates, applies one rule, and keeps one guard.</p>
+    <section id="result" class="hero">
+      <div>
+        <div class="head">
+          <span class="eyebrow">Bahn Express · one simulated week of car transport in Finland</span>
+          <h1>A dispatcher that prices by what it has measured</h1>
+          <p class="lede">Dealers ask for prices, and a competitor answers them too. Each car that we win needs a freelance driver, found by posting a gig with a fee. The score is the margin; a team counts only with 90% of its orders on time.</p>
+        </div>
+        <div class="figures" id="figures"></div>
+        <div class="card console" id="week">
+          <div class="clock-row">
+            <div><span class="eyebrow">One week of version 21, replayed</span><output class="clock" id="clock" for="when"></output></div>
+            <button type="button" class="pill main" id="play">Play</button>
+          </div>
+          <div class="scrub">
+            <svg id="spark" viewBox="0 0 600 62" role="img" aria-label="The week's margin as it grows, with the nights shaded"></svg>
+            <input id="when" type="range" min="0" step="5" value="0" aria-label="Minute of the week">
+          </div>
+          <div class="moments" id="moments"></div>
+          <div class="counts" id="counts"></div>
+          <div class="legend">
+            <span><i class="ring"></i>won, no driver yet</span>
+            <span><i class="dot" style="background:var(--teal)"></i>booked, or on the road</span>
+            <span><i class="dot" style="background:var(--orange)"></i>will arrive late</span>
+            <span><i class="ring" style="border-color:var(--red)"></i>a request that we win</span>
+            <span><i class="ring" style="border-color:var(--muted)"></i>one that goes to the competitor</span>
+          </div>
+        </div>
       </div>
-      <div class="figures" id="figures"></div>
+      <figure class="card map">
+        <svg id="map" viewBox="0 0 460 776" role="img" aria-label="Map of Finland with the week's requests, waiting orders and cars on the road"></svg>
+        <figcaption class="note" id="map-note"></figcaption>
+      </figure>
     </section>
 
     <section id="desk">
@@ -190,7 +258,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
         <h2>One request, one price, one gig</h2>
         <p>Every request takes the same path. The numbers beside each step are what that step was measured to be worth, on the same practice weeks with it and without it.</p>
       </div>
-      <div class="paper"><img src="DIAGRAM:how-the-desk-decides" alt="How the desk decides: a dealer's request is read, the notes reader extracts the real hours, a driver curve and a dealer curve estimate cost and chance, the price rule picks the price with the highest expected profit, the guard checks the week's room, and the won car becomes a gig."></div>
+      <div class="paper"><img class="day" src="DIAGRAM:how-the-desk-decides" alt="How the desk decides: a dealer's request is read, the notes reader extracts the real hours, a driver curve and a dealer curve estimate cost and chance, the price rule picks the price with the highest expected profit, the guard checks the week's room, and the won car becomes a gig."><img class="night" src="NIGHT:how-the-desk-decides" alt=""></div>
       <div class="card">
         <div class="head">
           <h3>Try the price rule</h3>
@@ -233,7 +301,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
         <div class="scroll"><table id="ideas"></table></div>
       </div>
 
-      <div class="paper"><img src="DIAGRAM:how-an-idea-becomes-a-default" alt="How an idea becomes a default: a setting that is off is played on 80 practice weeks with and without it; it must gain more than twice its standard error and must not lower the lowest week; then 80 unseen weeks judge it once; only then it becomes the default."></div>
+      <div class="paper"><img class="day" src="DIAGRAM:how-an-idea-becomes-a-default" alt="How an idea becomes a default: a setting that is off is played on 80 practice weeks with and without it; it must gain more than twice its standard error and must not lower the lowest week; then 80 unseen weeks judge it once; only then it becomes the default."><img class="night" src="NIGHT:how-an-idea-becomes-a-default" alt=""></div>
       <div class="card">
           <div class="head"><h3>Week by week</h3><p class="note">Pick a change. Each bar is one practice week: its margin with the change, less its margin without it, sorted from the worst week to the best.</p></div>
         <div class="split"><div>
@@ -298,7 +366,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
         <h2>34 minutes that nobody touches</h2>
         <p>In the final a weekday hour lasts 18 seconds, so a request waits 4.5 seconds for its price. If our code stops, the world goes on and the competitor takes the requests. The service waits for the final, plays it, and starts again by itself.</p>
       </div>
-      <div class="paper"><img src="DIAGRAM:the-live-final" alt="The live final: events arrive on a stream, the books are kept from the events, the desk decides and sends quotes and gigs back. Four nets: a request without an answer is recovered in place, a silent stream is opened again, a stopped process starts by itself, and the final is played from a VM near the server."></div>
+      <div class="paper"><img class="day" src="DIAGRAM:the-live-final" alt="The live final: events arrive on a stream, the books are kept from the events, the desk decides and sends quotes and gigs back. Four nets: a request without an answer is recovered in place, a silent stream is opened again, a stopped process starts by itself, and the final is played from a VM near the server."><img class="night" src="NIGHT:the-live-final" alt=""></div>
       <div class="card">
           <div class="head"><h3>What the nets were measured to do</h3></div>
           <div class="scroll"><table>
@@ -334,6 +402,97 @@ $("figures").innerHTML = [
   ["2nd of 236", "teams in the Sunday 01:00 test final, played from the VM"],
   [DATA.log.weeks.toLocaleString("en-US"), "practice weeks in the log, under " + DATA.log.labels + " labels"],
 ].map(([big, small]) => `<div class="figure"><b>${big}</b><span>${small}</span></div>`).join("");
+
+// The week on the map: one practice week of version 21, minute by minute
+(() => {
+  const week = DATA.week, W = 460, DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+  const rings = week.outline, all = rings.flat(), squeeze = Math.cos(64.9 * Math.PI / 180);
+  const west = Math.min(...all.map((p) => p[0])), east = Math.max(...all.map((p) => p[0]));
+  const north = 67.75, scale = (W - 24) / ((east - west) * squeeze);      // the map ends above Rovaniemi, the northernmost place
+  const spot = (lon, lat) => [12 + (lon - west) * squeeze * scale, 14 + (north - lat) * scale];
+  const traffic = new Map(), busy = week.places.map(() => 0);
+  for (const [, from, to] of week.cars) { const key = Math.min(from, to) + "-" + Math.max(from, to); traffic.set(key, (traffic.get(key) || 0) + 1); busy[from]++; busy[to]++; }
+  // Towns that sit a few kilometres apart are moved apart, the busiest furthest, so that their waiting cars can be told from each other.
+  const towns = week.places.map((p) => spot(p.lon, p.lat)), room = busy.map((n) => n > 60 ? 23 : n > 15 ? 13 : 8);
+  for (let round = 0; round < 80; round++) for (let a = 0; a < towns.length; a++) for (let b = a + 1; b < towns.length; b++) {
+    const dx = towns[b][0] - towns[a][0], dy = towns[b][1] - towns[a][1], far = Math.hypot(dx, dy) || 1, short = room[a] + room[b] - far;
+    if (short > 0) { const ux = dx / far, uy = dy / far; towns[a][0] -= ux * short / 2; towns[a][1] -= uy * short / 2; towns[b][0] += ux * short / 2; towns[b][1] += uy * short / 2; }
+  }
+  // A lane is a shallow arc between two towns; a car follows it in its own direction.
+  const bend = (a, b) => { const [p, q] = a < b ? [towns[a], towns[b]] : [towns[b], towns[a]]; return [(p[0] + q[0]) / 2 - (q[1] - p[1]) * 0.13, (p[1] + q[1]) / 2 + (q[0] - p[0]) * 0.13]; };
+  const along = (a, b, f) => { const p = towns[a], q = towns[b], c = bend(a, b), g = 1 - f; return [g * g * p[0] + 2 * g * f * c[0] + f * f * q[0], g * g * p[1] + 2 * g * f * c[1] + f * f * q[1]]; };
+  const arc = (a, b) => { const p = towns[a], q = towns[b], c = bend(a, b); return `M${p[0].toFixed(1)} ${p[1].toFixed(1)}Q${c[0].toFixed(1)} ${c[1].toFixed(1)} ${q[0].toFixed(1)} ${q[1].toFixed(1)}`; };
+  const named = week.places.map((p, i) => i).filter((i) => ["Helsinki", "Tampere", "Turku", "Oulu", "Rovaniemi", "Kuopio", "Jyväskylä", "Vaasa", "Joensuu", "Lappeenranta", "Kajaani", "Pori", "Kokkola", "Kemi"].includes(week.places[i].name));
+  const map = $("map");
+  map.innerHTML = rings.map((ring) => `<path class="land" d="M${ring.map((p) => spot(p[0], p[1]).map((v) => v.toFixed(1)).join(" ")).join("L")}Z"/>`).join("") +
+    `<defs><linearGradient id="north" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--card)"/><stop offset="1" style="stop-color:var(--card);stop-opacity:0"/></linearGradient></defs><rect x="0" y="0" width="${W}" height="90" fill="url(#north)"/>` +
+    [...traffic].map(([key, n]) => { const [a, b] = key.split("-").map(Number); return `<path class="lane" d="${arc(a, b)}" stroke-width="${(0.5 + 0.22 * Math.sqrt(n)).toFixed(2)}" opacity="${Math.min(0.5, 0.08 + 0.035 * n).toFixed(2)}"/>`; }).join("") +
+    `<g id="trails"></g>` + towns.map((t, i) => `<circle class="town" cx="${t[0].toFixed(1)}" cy="${t[1].toFixed(1)}" r="${(1.6 + Math.min(2.2, busy[i] / 60)).toFixed(1)}"/>`).join("") +
+    named.map((i) => { const [x, y] = towns[i], east = ["Helsinki", "Joensuu", "Lappeenranta", "Kuopio", "Kajaani", "Rovaniemi", "Oulu", "Jyväskylä"].includes(week.places[i].name); return `<text class="name" x="${(x + (east ? 9 : -9)).toFixed(1)}" y="${(y + (week.places[i].name === "Helsinki" ? 15 : 3.5)).toFixed(1)}" text-anchor="${east ? "start" : "end"}">${esc(week.places[i].name)}</text>`; }).join("") +
+    `<g id="piles"></g><g id="cars"></g><g id="pings"></g>`;
+  const trails = map.querySelector("#trails"), piles = map.querySelector("#piles"), cars = map.querySelector("#cars"), pings = map.querySelector("#pings");
+
+  // The strip under the clock: the margin as it grows, the nights shaded
+  const SW = 600, SH = 62, top = Math.max(...week.margin), sx = (minute) => SW * minute / week.end, sy = (v) => 4 + 40 * (1 - Math.max(0, v) / top);
+  const nights = []; for (let day = 0; day * 1440 < week.end; day++) nights.push([day * 1440 - 120, day * 1440 + 360]);
+  $("spark").innerHTML = nights.map(([a, b]) => `<rect class="dark-band" x="${sx(Math.max(0, a)).toFixed(1)}" y="0" width="${(sx(Math.min(week.end, b)) - sx(Math.max(0, a))).toFixed(1)}" height="46"/>`).join("") +
+    `<path class="rise" d="M0 ${sy(0)}${week.margin.map((v, i) => `L${sx(i * 30).toFixed(1)} ${sy(v).toFixed(1)}`).join("")}L${SW} ${sy(0)}Z"/>` +
+    `<path class="edge" d="${week.margin.map((v, i) => (i ? "L" : "M") + sx(i * 30).toFixed(1) + " " + sy(v).toFixed(1)).join("")}"/>` +
+    DAYS.map((day, i) => i * 1440 > week.end ? "" : `<text x="${(sx(i * 1440) + 3).toFixed(1)}" y="58" style="font:400 10px var(--mono);fill:var(--muted)">${day}</text>`).join("") +
+    `<line class="now" id="now" x1="0" x2="0" y1="0" y2="46"/>`;
+  const now = $("spark").querySelector("#now"), slider = $("when");
+  slider.max = week.end;
+
+  const gaveBack = week.drops.filter((d) => d >= 2880 && d < 3060).length;
+  const moments = [[6 * 60 + 30, "Mon 06:30 · the week opens"], [2880, `Wed 00:00 · ${gaveBack} drivers give their bookings back`], [4 * 1440 + 15 * 60, "Fri 15:00 · cars due after the weekend"]];
+  $("moments").innerHTML = moments.map(([, words], i) => `<button type="button" class="pill" id="moment-${i}">${esc(words)}</button>`).join("");
+  $("map-note").innerHTML = `Week <code>${esc(week.seed)}</code>, one that no setting was tuned on: ${week.won} orders, ${week.on_time.toFixed(1)}% on time, ${euro(week.total)}. The towns are the world's 30 places; those that sit a few kilometres apart are drawn apart, and a car follows a straight lane.`;
+
+  let minute = 34 * 60, playing = false, before = 0;
+  function draw() {
+    const waiting = week.places.map(() => []), moving = [];
+    let won = 0, late = 0;
+    for (const car of week.cars) {
+      const [wonAt, from, to, booked, picked, delivered, deadline] = car, behind = delivered < 0 || delivered > deadline;
+      if (wonAt > minute) continue;
+      won++;
+      if (minute < picked) waiting[from].push(minute >= booked);
+      else if (delivered < 0 || minute < delivered) moving.push([from, to, delivered < 0 ? 0.5 : (minute - picked) / (delivered - picked), behind]);
+      else if (behind) late++;
+    }
+    piles.innerHTML = waiting.map((pile, i) => pile.map((driver, k) => { const r = 5.6 + 3.5 * Math.sqrt(k), a = k * 2.39996; return `<circle class="${driver ? "has-driver" : "wait"}" cx="${(towns[i][0] + r * Math.cos(a)).toFixed(1)}" cy="${(towns[i][1] + r * Math.sin(a)).toFixed(1)}" r="2.5"/>`; }).join("")).join("");
+    trails.innerHTML = moving.map(([from, to, , behind]) => `<path class="trail${behind ? " behind" : ""}" d="${arc(from, to)}"/>`).join("");
+    cars.innerHTML = moving.map(([from, to, f, behind]) => { const [x, y] = along(from, to, f); return `<circle class="car${behind ? " behind" : ""}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"/>`; }).join("");
+    const ping = (at, place, ours) => { const age = (minute - at) / 80; return age < 0 || age > 1 ? "" : `<circle class="ping${ours ? " ours" : ""}" cx="${towns[place][0].toFixed(1)}" cy="${towns[place][1].toFixed(1)}" r="${(4 + 15 * age).toFixed(1)}" opacity="${(1 - age).toFixed(2)}"/>`; };
+    pings.innerHTML = week.lost.map(([at, place]) => ping(at, place, false)).join("") + week.cars.map(([at, place]) => ping(at, place, true)).join("");
+    const hour = (minute % 1440) / 60;
+    map.classList.toggle("dark-hours", hour < 6 || hour >= 22);
+    $("clock").textContent = DAYS[Math.floor(minute / 1440)] + " " + String(Math.floor(hour)).padStart(2, "0") + ":" + String(Math.floor(minute % 60)).padStart(2, "0");
+    const noDriver = waiting.reduce((sum, pile) => sum + pile.filter((driver) => !driver).length, 0);
+    $("counts").innerHTML = [[euro(week.margin[Math.min(week.margin.length - 1, Math.floor(minute / 30))]), "margin so far"], [won, "cars won"], [moving.length, "on the road"], [noDriver, "wait for a driver"], [late, "arrived late"]]
+      .map(([big, small]) => `<div><b>${big}</b><span>${small}</span></div>`).join("");
+    now.setAttribute("x1", sx(minute)); now.setAttribute("x2", sx(minute));
+    slider.value = Math.round(minute);
+  }
+  function tick(stamp) {
+    if (!playing) return;
+    const hour = (minute % 1440) / 60, day = Math.floor(minute / 1440), quiet = hour < 6 || hour >= 22 || day % 7 > 4;
+    minute += Math.min(0.1, (stamp - before) / 1000) * (quiet ? 720 : 110);       // a working day takes about nine seconds
+    before = stamp;
+    if (minute >= week.end) minute = 6 * 60;
+    draw();
+    requestAnimationFrame(tick);
+  }
+  function play(on) {
+    playing = on; $("play").textContent = on ? "Pause" : "Play";
+    if (on) requestAnimationFrame((stamp) => { before = stamp; requestAnimationFrame(tick); });
+  }
+  $("play").addEventListener("click", () => play(!playing));
+  slider.addEventListener("input", () => { minute = +slider.value; draw(); });
+  $("moments").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { minute = moments[+b.id.slice(7)][0]; draw(); } });
+  draw();
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) play(true);
+})();
 
 // The ladder of versions
 (() => {
