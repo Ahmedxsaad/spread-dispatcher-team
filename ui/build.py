@@ -1,6 +1,7 @@
 """Builds the page that shows the desk and its evidence: ui/index.html, one file that opens by itself.
 
-    python3 ui/build.py
+    python3 ui/build.py                      # ui/index.html
+    python3 ui/build.py --site <folder>      # and a folder to host: the page with its diagrams beside it
 
 Every number on the page is computed here from results/runs.csv, the recorded test final and desk/fitted.json,
 or copied from the README where a round's rank is stated. The layout is ui/page.html. The map replays the week
@@ -13,6 +14,7 @@ import base64
 import csv
 import json
 import math
+import shutil
 import statistics
 import sys
 from collections import defaultdict
@@ -167,19 +169,34 @@ def data() -> dict:
     }
 
 
-def page(inline: bool) -> str:
-    """The page with its data. inline: the diagrams go into the file itself, for a page that is hosted alone."""
+FRAME = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
+         '<meta name="description" content="A dispatcher for Spread, Bahn Express\'s challenge at Junction 2026: one week replayed on a map of Finland, and the measured evidence behind each idea.">\n'
+         "<link rel=\"icon\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2312110e'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23fd4a61'/%3E%3C/svg%3E\">\n")
+
+
+def page(pictures: str) -> str:
+    """The page with its data. pictures: the folder that holds the diagrams, as the page will address it; "" puts them into the file itself."""
     text = (ROOT / "ui/page.html").read_text().replace("/*DATA*/", json.dumps(data(), separators=(",", ":")))
     for name in ("how-the-desk-decides", "how-an-idea-becomes-a-default", "the-live-final"):
         for mark, picture in ((f"DIAGRAM:{name}", ROOT / f"docs/diagrams/{name}.svg"), (f"NIGHT:{name}", ROOT / f"docs/diagrams/{name}.dark.svg")):
-            source = "data:image/svg+xml;base64," + base64.b64encode(picture.read_bytes()).decode() if inline else f"../docs/diagrams/{picture.name}"
+            source = f"{pictures}/{picture.name}" if pictures else "data:image/svg+xml;base64," + base64.b64encode(picture.read_bytes()).decode()
             text = text.replace(mark, source)
     return text
 
 
+def document(text: str) -> str:
+    head, body = text.split("<!--BODY-->")
+    return FRAME + head + "</head>\n<body>\n" + body + "</body>\n</html>\n"
+
+
 if __name__ == "__main__":
-    head, body = page(inline=False).split("<!--BODY-->")
-    (ROOT / "ui/index.html").write_text('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
-                                        + head + "</head>\n<body>\n" + body + "</body>\n</html>\n")
-    if len(sys.argv) > 1:  # a second copy without the document's frame and with the diagrams inside, for a host that adds its own
-        Path(sys.argv[1]).write_text(page(inline=True).replace("<!--BODY-->", ""))
+    (ROOT / "ui/index.html").write_text(document(page("../docs/diagrams")))
+    if sys.argv[1:2] == ["--site"]:     # a folder to host: the page, with its diagrams beside it
+        site = Path(sys.argv[2])
+        (site / "diagrams").mkdir(parents=True, exist_ok=True)
+        (site / "index.html").write_text(document(page("diagrams")))
+        for picture in (ROOT / "docs/diagrams").glob("*.svg"):
+            shutil.copy(picture, site / "diagrams" / picture.name)
+    elif sys.argv[1:]:                  # one file with the diagrams inside and without the document's frame, for a host that adds its own
+        Path(sys.argv[1]).write_text(page("").replace("<!--BODY-->", ""))

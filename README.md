@@ -6,7 +6,9 @@ Spread is Bahn Express's challenge at Junction 2026: one simulated week of a car
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/how-the-desk-decides.dark.png"><img alt="How the desk decides" src="docs/diagrams/how-the-desk-decides.png"></picture>
 
-This repository is our system (`desk/`), the harness that measures it (`eval/`), the log of every week it has played (`results/runs.csv`), and a page that replays a week on a map of Finland and shows the evidence with charts (`ui/index.html`: open it in a browser).
+**The page: [bahn.ahmedxsaad.me](https://bahn.ahmedxsaad.me).** It replays one week of version 21 on a map of Finland and shows the evidence with charts.
+
+This repository is our system (`desk/`), the harness that measures it (`eval/`), the log of every week it has played (`results/runs.csv`), and that page (`ui/`).
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/control-room.dark.png"><img alt="The page: a week of version 21 replayed on a map of Finland, then the desk, the evidence, the rounds and the live final" src="docs/control-room.png"></picture>
 
@@ -196,6 +198,7 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 
 .venv/bin/python -m unittest discover -s tests                 # the tests of the live loop and the guard
 python3 ui/build.py                                            # the page, from the log: ui/index.html
+python3 ui/build.py --site ui/site && npx wrangler deploy -c ui/wrangler.jsonc   # the page on bahn.ahmedxsaad.me
 python3 docs/diagrams/draw.py                                  # the three diagrams, as Excalidraw scenes
 ```
 
@@ -217,7 +220,7 @@ python3 docs/diagrams/draw.py                                  # the three diagr
 | `results/runs.csv` | One row for each week played: 11,651 weeks under 272 labels |
 | `results/test-final-sunday-0100.csv` | The public feed of the Sunday 01:00 test final as we recorded it: the first ten teams, hour by hour |
 | `results/replay.json` | One week of version 21 (`check-35`) as the page's map replays it: each request, each car's four moments, the margin as it grew. `analysis/replay.py` writes it from the world's event history |
-| `ui/` | The page: `build.py` computes every number from the log, `page.html` is the layout, `index.html` the result, `finland.json` the country's outline (Natural Earth, public domain) |
+| `ui/` | The page: `build.py` computes every number from the log, `page.html` is the layout, `index.html` the result, `finland.json` the country's outline (Natural Earth, public domain), `wrangler.jsonc` the hosting on Cloudflare |
 | `docs/diagrams/` | The three diagrams: `draw.py` writes the Excalidraw scenes, from which the PNG and SVG files are rendered, each for a light and a dark page |
 | `RUNBOOK.md` | The morning of the final, step by step |
 | `AGENTS.md` | The rules for a teammate's coding agent: what protects the final, and what counts as evidence |

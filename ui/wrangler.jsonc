@@ -1,0 +1,8 @@
+{
+  // The page as a static site on Cloudflare:
+  //   python3 ui/build.py --site ui/site && npx wrangler deploy -c ui/wrangler.jsonc
+  "name": "night-shift-control-room",
+  "compatibility_date": "2026-11-13",
+  "assets": { "directory": "./site" },
+  "routes": [{ "pattern": "bahn.ahmedxsaad.me", "custom_domain": true }]
+}

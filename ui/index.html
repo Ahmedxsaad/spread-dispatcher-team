@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A dispatcher for Spread, Bahn Express's challenge at Junction 2026: one week replayed on a map of Finland, and the measured evidence behind each idea.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2312110e'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23fd4a61'/%3E%3C/svg%3E">
 <title>Night Shift Control Room</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&family=Poppins:wght@400;500;600&family=Reddit+Mono:wght@400;500&display=swap">
@@ -265,7 +267,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
         <h2>One request, one price, one gig</h2>
         <p>Every request takes the same path. The numbers beside each step are what that step was measured to be worth, on the same practice weeks with it and without it.</p>
       </div>
-      <div class="paper"><img class="day" src="../docs/diagrams/how-the-desk-decides.svg" alt="How the desk decides: a dealer's request is read, the notes reader extracts the real hours, a driver curve and a dealer curve estimate cost and chance, the price rule picks the price with the highest expected profit, the guard checks the week's room, and the won car becomes a gig."><img class="night" src="../docs/diagrams/how-the-desk-decides.dark.svg" alt=""></div>
+      <div class="paper"><img class="day" loading="lazy" src="../docs/diagrams/how-the-desk-decides.svg" alt="How the desk decides: a dealer's request is read, the notes reader extracts the real hours, a driver curve and a dealer curve estimate cost and chance, the price rule picks the price with the highest expected profit, the guard checks the week's room, and the won car becomes a gig."><img class="night" loading="lazy" src="../docs/diagrams/how-the-desk-decides.dark.svg" alt=""></div>
       <div class="card">
         <div class="head">
           <h3>Try the price rule</h3>
@@ -308,7 +310,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
         <div class="scroll"><table id="ideas"></table></div>
       </div>
 
-      <div class="paper"><img class="day" src="../docs/diagrams/how-an-idea-becomes-a-default.svg" alt="How an idea becomes a default: a setting that is off is played on 80 practice weeks with and without it; it must gain more than twice its standard error and must not lower the lowest week; then 80 unseen weeks judge it once; only then it becomes the default."><img class="night" src="../docs/diagrams/how-an-idea-becomes-a-default.dark.svg" alt=""></div>
+      <div class="paper"><img class="day" loading="lazy" src="../docs/diagrams/how-an-idea-becomes-a-default.svg" alt="How an idea becomes a default: a setting that is off is played on 80 practice weeks with and without it; it must gain more than twice its standard error and must not lower the lowest week; then 80 unseen weeks judge it once; only then it becomes the default."><img class="night" loading="lazy" src="../docs/diagrams/how-an-idea-becomes-a-default.dark.svg" alt=""></div>
       <div class="card">
           <div class="head"><h3>Week by week</h3><p class="note">Pick a change. Each bar is one practice week: its margin with the change, less its margin without it, sorted from the worst week to the best.</p></div>
         <div class="split"><div>
@@ -373,7 +375,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
         <h2>34 minutes that nobody touches</h2>
         <p>In the final a weekday hour lasts 18 seconds, so a request waits 4.5 seconds for its price. If our code stops, the world goes on and the competitor takes the requests. The service waits for the final, plays it, and starts again by itself.</p>
       </div>
-      <div class="paper"><img class="day" src="../docs/diagrams/the-live-final.svg" alt="The live final: events arrive on a stream, the books are kept from the events, the desk decides and sends quotes and gigs back. Four nets: a request without an answer is recovered in place, a silent stream is opened again, a stopped process starts by itself, and the final is played from a VM near the server."><img class="night" src="../docs/diagrams/the-live-final.dark.svg" alt=""></div>
+      <div class="paper"><img class="day" loading="lazy" src="../docs/diagrams/the-live-final.svg" alt="The live final: events arrive on a stream, the books are kept from the events, the desk decides and sends quotes and gigs back. Four nets: a request without an answer is recovered in place, a silent stream is opened again, a stopped process starts by itself, and the final is played from a VM near the server."><img class="night" loading="lazy" src="../docs/diagrams/the-live-final.dark.svg" alt=""></div>
       <div class="card">
           <div class="head"><h3>What the nets were measured to do</h3></div>
           <div class="scroll"><table>

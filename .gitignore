@@ -11,3 +11,6 @@ reveal-*/
 results/journal/
 # Addresses and other facts of this machine's own setup.
 *.local.md
+# The hosted copy of the page: ui/build.py --site writes it.
+ui/site/
+.wrangler/
