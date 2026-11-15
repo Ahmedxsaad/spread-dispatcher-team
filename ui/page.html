@@ -214,7 +214,7 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
       <a href="#not-taken">Not taken</a>
       <a href="#live">The live final</a>
     </nav>
-    <div class="plays"><span>Plays the final</span><b>version 21 · bbf9448</b><span>Sunday 15 November, 09:00 Helsinki</span></div>
+    <div class="plays"><span>Played the final</span><b>6th of 236 teams · €19,919</b><span>version 21 · Sunday 15 November, 09:00 Helsinki</span></div>
   </aside>
 
   <main>
@@ -340,12 +340,13 @@ footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--mute
           <div class="scroll"><table id="rounds-table"></table></div>
         </div>
         <div class="card">
-          <div class="head"><h3>Three test finals</h3><p class="note">The same loop each time. What changed is the network between the desk and the server.</p></div>
+          <div class="head"><h3>Three test finals and the final</h3><p class="note">The same loop each time. What changed is the network between the desk and the server.</p></div>
           <div class="scroll"><table>
             <tr><th>Test final</th><th>Played from</th><th class="num">Place</th></tr>
             <tr><td>Saturday 14:00<br><span class="note">joined on the week's Thursday</span></td><td>laptop</td><td class="num">9th of 55</td></tr>
             <tr><td>Saturday 20:00<br><span class="note">the hall's Wi-Fi lost a request a minute</span></td><td>laptop</td><td class="num">29th of 75</td></tr>
-            <tr class="us"><td>Sunday 01:00<br><span class="note">after the loop was hardened</span></td><td>VM, 15 ms away</td><td class="num">2nd of 236</td></tr>
+            <tr><td>Sunday 01:00<br><span class="note">after the loop was hardened</span></td><td>VM, 15 ms away</td><td class="num">2nd of 236</td></tr>
+            <tr class="us"><td>The final, Sunday 09:00<br><span class="note">€19,919 from 460 orders at 95.9% on time; 58 teams ranked</span></td><td>VM, 15 ms away</td><td class="num">6th of 236</td></tr>
           </table></div>
         </div>
       </div>
@@ -399,7 +400,7 @@ const US = "DaVinci's Night Shift";
 $("figures").innerHTML = [
   [euro(DATA.unseen.margin), "a week on 80 level 8 weeks that no setting was tuned on"],
   [DATA.unseen.on_time.toFixed(1) + "%", "of the orders on time there; lowest week " + DATA.unseen.lowest + "%, the gate is 90%"],
-  ["2nd of 236", "teams in the Sunday 01:00 test final, played from the VM"],
+  ["6th of 236", "teams in the final on Sunday 09:00: €19,919 at 95.9% on time"],
   [DATA.log.weeks.toLocaleString("en-US"), "practice weeks in the log, under " + DATA.log.labels + " labels"],
 ].map(([big, small]) => `<div class="figure"><b>${big}</b><span>${small}</span></div>`).join("");
 

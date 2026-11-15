@@ -1,6 +1,7 @@
 {
-  // The page as a static site on Cloudflare:
-  //   python3 ui/build.py --site ui/site && npx wrangler deploy -c ui/wrangler.jsonc
+  // The site on Cloudflare: the arcade in front, the replay page under /replay/.
+  //   cp ui/arcade.html ui/site/index.html && python3 ui/build.py --site ui/site/replay
+  //   npx wrangler deploy -c ui/wrangler.jsonc
   "name": "night-shift-control-room",
   "compatibility_date": "2026-11-13",
   "assets": { "directory": "./site" },

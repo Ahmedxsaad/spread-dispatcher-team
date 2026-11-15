@@ -2,11 +2,11 @@
 
 Spread is Bahn Express's challenge at Junction 2026: one simulated week of a car transport company in Finland. Dealers ask for prices, and a competitor answers them too. Each car that we win needs a freelance driver, found by posting a gig with a fee. The score is the gross margin, and a team is ranked only when at least 90% of its orders arrive on time.
 
-**In short.** The desk makes two estimates, applies one rule and keeps one guard. Version 21 makes €16,013 a week on 80 level 8 weeks that no setting was tuned on, at 97.0% on time, with the lowest week at 92.6%. In the Sunday 01:00 test final it was second of 236 teams. Every idea was measured on the same weeks with it and without it: the 11,651 practice weeks are in `results/runs.csv` under 272 labels, and what did not work is listed below with its number.
+**In short.** The desk makes two estimates, applies one rule and keeps one guard. Version 21 makes €16,013 a week on 80 level 8 weeks that no setting was tuned on, at 97.0% on time, with the lowest week at 92.6%. In the Sunday 01:00 test final it was second of 236 teams. In the final, on Sunday at 09:00, it was sixth of 236 teams, 58 of them ranked: €19,919 from 460 orders at 95.9% on time. Every idea was measured on the same weeks with it and without it: the 11,651 practice weeks are in `results/runs.csv` under 272 labels, and what did not work is listed below with its number.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/how-the-desk-decides.dark.png"><img alt="How the desk decides" src="docs/diagrams/how-the-desk-decides.png"></picture>
 
-**The page: [bahn.ahmedxsaad.me](https://bahn.ahmedxsaad.me).** It replays one week of version 21 on a map of Finland and shows the evidence with charts.
+**The replay: [bahn.ahmedxsaad.me/replay](https://bahn.ahmedxsaad.me/replay/).** It replays one week of version 21 on a map of Finland and shows the evidence with charts. The front page, [bahn.ahmedxsaad.me](https://bahn.ahmedxsaad.me), is the desk as an arcade cabinet: pull the lever to play a week, and fit the six upgrades in the order in which we built them.
 
 This repository is our system (`desk/`), the harness that measures it (`eval/`), the log of every week it has played (`results/runs.csv`), and that page (`ui/`).
 
@@ -198,7 +198,9 @@ printf 'SPREAD_URL=https://spread.bahnexpress.com\nSPREAD_KEY=<team key>\n' > .e
 
 .venv/bin/python -m unittest discover -s tests                 # the tests of the live loop and the guard
 python3 ui/build.py                                            # the page, from the log: ui/index.html
-python3 ui/build.py --site ui/site && npx wrangler deploy -c ui/wrangler.jsonc   # the page on bahn.ahmedxsaad.me
+mkdir -p ui/site && cp ui/arcade.html ui/site/index.html      # the site: the arcade in front,
+python3 ui/build.py --site ui/site/replay                      # and the replay page under /replay/
+npx wrangler deploy -c ui/wrangler.jsonc                       # puts it on bahn.ahmedxsaad.me
 python3 docs/diagrams/draw.py                                  # the three diagrams, as Excalidraw scenes
 ```
 
@@ -220,7 +222,8 @@ python3 docs/diagrams/draw.py                                  # the three diagr
 | `results/runs.csv` | One row for each week played: 11,651 weeks under 272 labels |
 | `results/test-final-sunday-0100.csv` | The public feed of the Sunday 01:00 test final as we recorded it: the first ten teams, hour by hour |
 | `results/replay.json` | One week of version 21 (`check-35`) as the page's map replays it: each request, each car's four moments, the margin as it grew. `analysis/replay.py` writes it from the world's event history |
-| `ui/` | The page: `build.py` computes every number from the log, `page.html` is the layout, `index.html` the result, `finland.json` the country's outline (Natural Earth, public domain), `wrangler.jsonc` the hosting on Cloudflare |
+| `results/final-sunday-0900.csv` | The public standings at the end of the final: the 58 ranked teams |
+| `ui/` | `arcade.html` is the site's front page, the desk as an arcade cabinet in one file. The replay page: `build.py` computes every number from the log, `page.html` is the layout, `index.html` the result, `finland.json` the country's outline (Natural Earth, public domain), `wrangler.jsonc` the hosting on Cloudflare |
 | `docs/diagrams/` | The three diagrams: `draw.py` writes the Excalidraw scenes, from which the PNG and SVG files are rendered, each for a light and a dark page |
 | `RUNBOOK.md` | The morning of the final, step by step |
 | `AGENTS.md` | The rules for a teammate's coding agent: what protects the final, and what counts as evidence |
@@ -239,6 +242,7 @@ python3 docs/diagrams/draw.py                                  # the three diagr
 
   After them, on the same network: Thursday 97 orders and Friday 59, no rejoin, two lost requests recovered in place and four silent streams opened again. The desk also keeps the server's address after its first request, because the hall's name server failed for seconds at a time.
 - The Sunday 01:00 test final, a full week, was played by `v21` from the VM: second of 236 teams (41 ranked), €13,672 with 371 orders at 96.8% on time, behind €14,112 and ahead of the team that leads every ranking round. No late quote, no lost request and no rejoin in the whole week. Five hours earlier the same loop, from the hall's Wi-Fi, was 29th.
+- The final, on Sunday at 09:00, was played by `v21` from the VM, by the service that had waited for it since 08:01: sixth of 236 teams (58 ranked), €19,918.93 with 460 orders at 95.9% on time. The first team made €22,931 and the tenth €19,084 (`results/final-sunday-0900.csv`). No restart and no rejoin in the whole week. In the first minute the stream was silent five times and was opened again each time; Monday still brought 101 orders. On the Monday after the week, when the last cars were due, 6 drivers gave their bookings back in the night, and the on-time share ended at 95.9%, from 97.2% on Sunday.
 - The final is played from a VM in a data centre, 15 ms from the server (19 ms at worst in 40 requests), by a service that starts by itself. Full weeks played live there with a restart in the middle of each make what practice says: €21,828, €19,278, €18,962 and €19,733 on weeks that make €22,258, €18,125, €18,268 and €19,579 in practice mode, with no failed look and at most one late quote.
 - Three more changes to the final's code came from the teammate's review that night, each checked by tests in `tests/`, by eight practice weeks that give `v20`'s margin to the cent, and by a live week with a restart: a car whose pickup failed in a pair no longer keeps its old gig as carrier after a recovery; the dealer curve is computed once for each option, not once for each price, which more than halves the time of a decision; and the kit's stream waits at most 5 seconds for its handshake or for the rest of a frame, where its own limit is 300.
 - Full weeks played live on practice worlds whose clock moves at the final's pace, or three times as fast: without a restart €19,208 a week on four weeks that make €19,033 in practice mode; with one restart in the middle of each, €19,444. A restart costs nothing that these weeks can show.
