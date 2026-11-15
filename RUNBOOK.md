@@ -1,6 +1,6 @@
 # Runbook: playing a final
 
-The final is one level 8 week on Sunday 15 November at 08:00 Helsinki time. The organisers set it at 07:30. It runs by itself for about 34 minutes. A test final works the same way and takes about 19 minutes.
+The final is one level 8 week on Sunday 15 November at 09:00 Helsinki time (moved from 08:00). The organisers set it at 08:30. It runs by itself for about 34 minutes. A test final works the same way and takes about 19 minutes.
 
 ## Where the final is played from: the VM
 
@@ -33,7 +33,7 @@ git status --short                   # must print nothing
 
 ## Start
 
-Start the runner before 07:30. One runner at a time: a second one stops at once and says so.
+Start the runner before 08:30. One runner at a time: a second one stops at once and says so.
 
 ```sh
 cd ../spread-final
@@ -51,7 +51,7 @@ tail -f results/logs/final/*.log
 | When | The log says |
 |---|---|
 | Before the final is set | `No final is set. Waiting for it` |
-| From 07:30 | `Final world <id>.`, then `Mon 00:00 joined world <id>: 0 orders in hand ...` |
+| From 08:30 | `Final world <id>.`, then `Mon 00:00 joined world <id>: 0 orders in hand ...` |
 | During the final | One line for each day of the week: margin, orders, on-time share, cars without a driver |
 | At the end | `End  margin € ...` and `Ranked.` |
 
@@ -74,7 +74,7 @@ While the desk is down the world goes on: gigs keep their fee schedules, booked 
 
 ## Before the final: checklist
 
-- On the VM `systemctl is-active spread-final` says `active`, and its log's last line is `No final is set. Waiting for it` (before 07:30) or `joined world ...` (after).
+- On the VM `systemctl is-active spread-final` says `active`, and its log's last line is `No final is set. Waiting for it` (before 08:30) or `joined world ...` (after).
 - No `run_final.sh` runs on the laptop (`pgrep -af run_final` prints nothing).
 - If the laptop has to play: it is on mains power, on the best network available (a phone's hotspot before the hall's Wi-Fi), in one place, with the lid open.
 - `git log` in `../spread-final/` shows the version chosen on Saturday evening, and `git status --short` prints nothing.

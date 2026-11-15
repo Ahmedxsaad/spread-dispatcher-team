@@ -1,6 +1,6 @@
 # For an agent working in this repository
 
-This is the team's dispatcher for Spread, Bahn Express's challenge at Junction 2026. The final is one secret level 8 week on Sunday 15 November at 08:00 Helsinki time. The ten ranked teams with the highest margin go to a jury.
+This is the team's dispatcher for Spread, Bahn Express's challenge at Junction 2026. The final is one secret level 8 week on Sunday 15 November at 09:00 Helsinki time (the organisers moved it from 08:00). The ten ranked teams with the highest margin go to a jury.
 
 Read `README.md` first. It has the results, each idea with its measured effect, and a long list of what did not work. Do not test again what is in that list unless you have a reason that the list does not answer.
 
